@@ -247,7 +247,7 @@ export default function CertModal({
           </div>
         )}
 
-        {/* ===== 시험 신청 버튼 ===== */}
+        {/* ===== 공식 사이트 링크 버튼 ===== */}
         <div className="mt-5">
           {cert.official_url ? (
             <a
@@ -257,12 +257,12 @@ export default function CertModal({
               className="flex items-center justify-center gap-2 w-full py-3.5 px-6 bg-primary hover:bg-primary/90 text-white font-bold text-[15px] rounded-xl transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 no-underline"
             >
               <i className="fas fa-external-link-alt" />
-              시험 신청 사이트 바로가기
+              공식 사이트 바로가기
             </a>
           ) : (
             <div className="flex items-center justify-center gap-2 w-full py-3.5 px-6 bg-gray-200 text-gray-500 font-bold text-[15px] rounded-xl cursor-not-allowed">
               <i className="fas fa-link-slash" />
-              시험 접수 링크 준비 중
+              공식 사이트 링크 준비 중
             </div>
           )}
         </div>
