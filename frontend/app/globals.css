@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Pretendard 폰트 ===== */
+@import url("https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800;900&display=swap");
+
+:root {
+  --primary: #00c471;
+  --primary-dark: #00a05e;
+  --primary-light: #e8faf1;
+  --bg-dark: #1b1c1d;
+  --bg-header: #1b1c1d;
+  --bg-body: #f8f9fa;
+  --bg-card: #ffffff;
+  --text-dark: #1b1c1d;
+  --text-gray: #616568;
+  --text-light: #858a8d;
+  --border: #e9ecef;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.12);
+  --radius: 12px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg-body);
+  color: var(--text-dark);
+  line-height: 1.6;
+}
+
+/* ===== FullCalendar 커스텀 스타일 ===== */
+.fc .fc-toolbar-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+}
+
+.fc .fc-button {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  padding: 6px 16px !important;
+}
+
+.fc .fc-button:hover {
+  background: var(--primary-dark) !important;
+}
+
+.fc .fc-button-active {
+  background: var(--primary-dark) !important;
+}
+
+.fc .fc-daygrid-day:hover {
+  background: #f0fdf4;
+}
+
+.fc .fc-event {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ===== 자격증 칩 공통 ===== */
+.cert-chip {
+  @apply inline-block px-2.5 py-0.5 mx-0.5 my-0.5 rounded-md text-xs font-medium cursor-pointer transition-all leading-relaxed;
+}
+
+.cert-chip:hover {
+  @apply -translate-y-0.5 shadow-md;
+}
+
+.cert-chip.basic {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.cert-chip.inter {
+  @apply bg-amber-100 text-amber-800;
+}
+
+.cert-chip.adv {
+  @apply bg-red-100 text-red-800;
+}
+
+.cert-chip.master {
+  @apply bg-violet-100 text-violet-800;
+}
