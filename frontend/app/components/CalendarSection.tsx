@@ -1,22 +1,41 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { CalendarEvent } from "@/lib/types";
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { CalendarEvent, Certification } from "@/lib/types";
 
 interface CalendarSectionProps {
   events: CalendarEvent[];
+  certifications: Certification[];
+  onCertClick: (cert: Certification) => void;
 }
 
-export default function CalendarSection({ events }: CalendarSectionProps) {
+export default function CalendarSection({
+  events,
+  certifications,
+  onCertClick,
+}: CalendarSectionProps) {
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarInstance = useRef<any>(null);
+  const [viewMode, setViewMode] = useState<"month" | "list">("month");
+
+  // refs로 최신값 유지 (calendar rebuild 방지)
+  const certificationsRef = useRef(certifications);
+  const onCertClickRef = useRef(onCertClick);
+  certificationsRef.current = certifications;
+  onCertClickRef.current = onCertClick;
+
+  // 이벤트 제목에서 자격증 이름 추출
+  const extractCertName = useCallback((title: string) => {
+    return title
+      .replace(/\s*(접수|시험|발표)$/, "")
+      .replace(/\s*\d+회\s*/, "")
+      .trim();
+  }, []);
 
   useEffect(() => {
-    // FullCalendar는 CDN으로 로드 (SSR 호환)
     const loadCalendar = async () => {
       if (typeof window === "undefined" || !calendarRef.current) return;
 
-      // CDN에서 FullCalendar 동적 로드
       const FullCalendar = await import("@fullcalendar/core");
       const dayGridPlugin = await import("@fullcalendar/daygrid");
       const listPlugin = await import("@fullcalendar/list");
@@ -25,25 +44,44 @@ export default function CalendarSection({ events }: CalendarSectionProps) {
         calendarInstance.current.destroy();
       }
 
-      calendarInstance.current = new FullCalendar.Calendar(calendarRef.current, {
-        plugins: [dayGridPlugin.default, listPlugin.default],
-        initialView: "dayGridMonth",
-        locale: "ko",
-        headerToolbar: {
-          left: "prev,next today",
-          center: "title",
-          right: "dayGridMonth,listMonth",
-        },
-        events: events,
-        eventDisplay: "block",
-        dayMaxEvents: 3,
-        height: "auto",
-        eventClick: (info: any) => {
-          alert(
-            `📋 ${info.event.title}\n📅 ${info.event.start.toLocaleDateString("ko-KR")}`
-          );
-        },
-      });
+      calendarInstance.current = new FullCalendar.Calendar(
+        calendarRef.current,
+        {
+          plugins: [dayGridPlugin.default, listPlugin.default],
+          initialView:
+            viewMode === "month" ? "dayGridMonth" : "listMonth",
+          locale: "ko",
+          headerToolbar: {
+            left: "prev,next today",
+            center: "title",
+            right: "", // 커스텀 스위치로 대체
+          },
+          events: events,
+          eventDisplay: "block",
+          dayMaxEvents: 3,
+          height: "auto",
+          eventClick: (info: any) => {
+            info.jsEvent.preventDefault();
+            const title = info.event.title;
+            const certName = extractCertName(title);
+
+            // 자격증 매칭 (정확한 이름 → 부분 포함 순서)
+            const cert =
+              certificationsRef.current.find(
+                (c) => c.name_ko === certName
+              ) ||
+              certificationsRef.current.find(
+                (c) =>
+                  c.name_ko.includes(certName) ||
+                  certName.includes(c.name_ko)
+              );
+
+            if (cert) {
+              onCertClickRef.current(cert);
+            }
+          },
+        }
+      );
 
       calendarInstance.current.render();
     };
@@ -53,11 +91,24 @@ export default function CalendarSection({ events }: CalendarSectionProps) {
     return () => {
       calendarInstance.current?.destroy();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
+  // 뷰 모드 전환
+  useEffect(() => {
+    if (calendarInstance.current) {
+      calendarInstance.current.changeView(
+        viewMode === "month" ? "dayGridMonth" : "listMonth"
+      );
+    }
+  }, [viewMode]);
+
   return (
-    <section className="max-w-[1400px] mx-auto py-[60px] px-6" id="calendar-section">
-      <div className="flex items-center justify-between mb-8">
+    <section
+      className="max-w-[1400px] mx-auto py-[60px] px-6"
+      id="calendar-section"
+    >
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
         <div>
           <h2 className="text-[26px] font-extrabold text-[#1b1c1d]">
             <i className="fas fa-calendar-days mr-2.5 text-primary" />
@@ -67,6 +118,34 @@ export default function CalendarSection({ events }: CalendarSectionProps) {
             시험 접수일, 시험일, 합격 발표일을 한눈에 확인하세요
           </p>
         </div>
+
+        {/* ===== Month / List 스위치 토글 ===== */}
+        {events.length > 0 && (
+          <div className="flex items-center bg-gray-100 rounded-full p-1 shadow-inner">
+            <button
+              onClick={() => setViewMode("month")}
+              className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+                viewMode === "month"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <i className="fas fa-calendar-days text-xs" />
+              월간
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
+                viewMode === "list"
+                  ? "bg-white text-primary shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <i className="fas fa-list-ul text-xs" />
+              목록
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-card p-8 shadow-card">
@@ -84,14 +163,21 @@ export default function CalendarSection({ events }: CalendarSectionProps) {
             <div className="w-3 h-3 rounded-sm bg-[#22c55e]" />
             합격 발표일
           </div>
+          <div className="ml-auto text-[12px] text-[#858a8d]">
+            <i className="fas fa-hand-pointer mr-1" />
+            일정을 클릭하면 자격증 상세 정보를 확인할 수 있습니다
+          </div>
         </div>
 
         {events.length === 0 ? (
           <div className="text-center py-16">
             <i className="fas fa-calendar-xmark text-5xl text-gray-300 mb-4 block" />
-            <h3 className="text-lg font-bold text-gray-500 mb-2">등록된 시험 일정이 없습니다</h3>
+            <h3 className="text-lg font-bold text-gray-500 mb-2">
+              등록된 시험 일정이 없습니다
+            </h3>
             <p className="text-sm text-gray-400">
-              현재 등록된 시험 일정 데이터가 없습니다.<br />
+              현재 등록된 시험 일정 데이터가 없습니다.
+              <br />
               크롤러가 실행되면 자동으로 업데이트됩니다.
             </p>
           </div>
