@@ -96,6 +96,30 @@ export default function CertModal({ cert, certifications, onClose, onSelectCert 
           </div>
         </div>
 
+        {/* 공식 URL & 시험 안내 */}
+        <div className="mt-5 bg-blue-50 p-4 rounded-[10px]">
+          <div className="text-xs text-blue-600 font-semibold mb-2">📌 시험 접수 안내</div>
+          {cert.official_url ? (
+            <a
+              href={cert.official_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-blue-700 hover:underline font-medium"
+            >
+              <i className="fas fa-external-link-alt mr-1" />
+              공식 시험 접수 페이지 바로가기
+            </a>
+          ) : (
+            <p className="text-sm text-blue-500">
+              시험 접수 정보가 아직 등록되지 않았습니다.
+              <br />
+              <span className="text-xs text-blue-400">
+                크롤러가 실행되면 자동으로 업데이트됩니다.
+              </span>
+            </p>
+          )}
+        </div>
+
         {/* Next Level */}
         {nextCerts.length > 0 && (
           <div className="mt-6">

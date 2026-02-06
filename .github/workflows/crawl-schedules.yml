@@ -1,7 +1,7 @@
 # =====================================================
 # Certi-Hub 자동 크롤링 워크플로우
 # guide.md 4.3절: 자동 업데이트 파이프라인 (Automation)
-# 매일 오전 9시(KST) 시험 일정 크롤링
+# 매일 오전 9시(KST) + 매주 월요일 시험 일정 크롤링
 # =====================================================
 
 name: 📅 자격증 시험 일정 자동 크롤링
@@ -10,14 +10,27 @@ on:
   schedule:
     # 매일 KST 오전 9시 (UTC 00:00)
     - cron: "0 0 * * *"
-  workflow_dispatch: # 수동 실행 지원
+    # 매주 월요일 KST 오전 6시 (UTC 일요일 21:00) - 전체 갱신
+    - cron: "0 21 * * 0"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "크롤링 소스 선택"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - qnet
+          - kdata
+          - cloud
 
 env:
   PYTHON_VERSION: "3.12"
 
 jobs:
   crawl:
-    name: 시험 일정 크롤링
+    name: 🕷️ 시험 일정 크롤링
     runs-on: ubuntu-latest
 
     steps:
@@ -32,34 +45,29 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: 📦 의존성 설치
+        run: pip install -r backend/requirements.txt
+
+      - name: 🕷️ 크롤러 실행
+        env:
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL }}
+        working-directory: backend
         run: |
-          pip install -r backend/requirements.txt
-          pip install scrapy selenium webdriver-manager
+          SOURCE="${{ github.event.inputs.source || 'all' }}"
+          echo "🚀 크롤링 소스: $SOURCE"
 
-      - name: 🕷️ Q-Net 크롤러 실행 (국가기술자격)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m crawlers.qnet_scraper
-        working-directory: backend
-        continue-on-error: true
-
-      - name: 🕷️ KData 크롤러 실행 (데이터 자격)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m crawlers.kdata_scraper
-        working-directory: backend
-        continue-on-error: true
-
-      - name: ☁️ Cloud Vendor 크롤러 실행 (AWS/GCP/Azure)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m crawlers.cloud_scraper
-        working-directory: backend
-        continue-on-error: true
+          if [ "$SOURCE" = "all" ]; then
+            python -m crawlers.run_crawlers
+          elif [ "$SOURCE" = "qnet" ]; then
+            python -m crawlers.run_crawlers --qnet
+          elif [ "$SOURCE" = "kdata" ]; then
+            python -m crawlers.run_crawlers --kdata
+          elif [ "$SOURCE" = "cloud" ]; then
+            python -m crawlers.run_crawlers --cloud
+          fi
 
       - name: 📊 크롤링 결과 요약
         if: always()
         run: |
           echo "========================================="
-          echo "  크롤링 완료: $(date '+%Y-%m-%d %H:%M KST')"
+          echo "  크롤링 완료: $(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M KST')"
           echo "========================================="

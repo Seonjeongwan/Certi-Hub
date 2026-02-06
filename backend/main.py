@@ -64,19 +64,54 @@ async def get_stats():
     """통계 정보 (프론트엔드 히어로 섹션용)"""
     from sqlalchemy import select, func
     from database import async_session
-    from models import Certification
+    from models import Certification, ExamSchedule
 
     async with async_session() as db:
         total = await db.execute(select(func.count(Certification.id)))
         tags = await db.execute(
             select(func.count(func.distinct(Certification.tag)))
         )
+        schedules = await db.execute(select(func.count(ExamSchedule.id)))
 
     return {
         "total_certs": total.scalar() or 0,
         "total_tags": tags.scalar() or 0,
+        "total_schedules": schedules.scalar() or 0,
         "total_levels": 4,
     }
+
+
+# ===== 크롤러 수동 실행 엔드포인트 =====
+
+@app.post("/api/crawl")
+async def trigger_crawl(source: str = "all"):
+    """
+    크롤러 수동 실행 (관리자용)
+    - source: "all" | "qnet" | "kdata" | "cloud"
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    results = {}
+    executor = ThreadPoolExecutor(max_workers=1)
+    loop = asyncio.get_event_loop()
+
+    if source in ("all", "qnet"):
+        from crawlers.qnet_scraper import run as qnet_run
+        stats = await loop.run_in_executor(executor, qnet_run)
+        results["qnet"] = stats
+
+    if source in ("all", "kdata"):
+        from crawlers.kdata_scraper import run as kdata_run
+        stats = await loop.run_in_executor(executor, kdata_run)
+        results["kdata"] = stats
+
+    if source in ("all", "cloud"):
+        from crawlers.cloud_scraper import run as cloud_run
+        stats = await loop.run_in_executor(executor, cloud_run)
+        results["cloud"] = stats
+
+    return {"status": "completed", "results": results}
 
 
 # ===== 실행 =====

@@ -86,7 +86,18 @@ export default function CalendarSection({ events }: CalendarSectionProps) {
           </div>
         </div>
 
-        <div ref={calendarRef} className="text-sm" />
+        {events.length === 0 ? (
+          <div className="text-center py-16">
+            <i className="fas fa-calendar-xmark text-5xl text-gray-300 mb-4 block" />
+            <h3 className="text-lg font-bold text-gray-500 mb-2">등록된 시험 일정이 없습니다</h3>
+            <p className="text-sm text-gray-400">
+              현재 등록된 시험 일정 데이터가 없습니다.<br />
+              크롤러가 실행되면 자동으로 업데이트됩니다.
+            </p>
+          </div>
+        ) : (
+          <div ref={calendarRef} className="text-sm" />
+        )}
       </div>
     </section>
   );
