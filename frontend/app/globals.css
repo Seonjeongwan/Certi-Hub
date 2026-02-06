@@ -60,10 +60,21 @@ body {
 }
 
 .fc .fc-event {
-  border-radius: 4px;
+  border-radius: 4px !important;
   padding: 2px 6px;
   font-size: 11px;
   font-weight: 600;
+  border-left-width: 5px !important;
+  border-left-style: solid !important;
+  border-top: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.fc .fc-event:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
 }
 
 /* ===== 자격증 칩 공통 ===== */

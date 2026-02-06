@@ -2,6 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CalendarEvent, Certification } from "@/lib/types";
+import { TAG_STYLES } from "@/lib/constants";
+
+// 이벤트 유형별 왼쪽 보더 색상 (고정 3색)
+const TYPE_BORDER_COLORS: Record<string, string> = {
+  registration: "#3b82f6", // 🔵 접수 - 파랑
+  exam:         "#dc2626", // 🔴 시험 - 빨강
+  result:       "#16a34a", // 🟢 발표 - 초록
+};
 
 interface CalendarSectionProps {
   events: CalendarEvent[];
@@ -62,6 +70,28 @@ export default function CalendarSection({
     });
   }, [events, certifications, activeTag, extractCertName]);
 
+  // 카테고리 배경색 + 유형 왼쪽 보더 색상 적용
+  const coloredEvents = useMemo(() => {
+    return filteredEvents.map((evt) => {
+      // cert_id로 자격증 찾기 → 카테고리 색상 가져오기
+      const cert = certifications.find((c) => c.id === evt.cert_id);
+      const tagStyle = cert ? TAG_STYLES[cert.tag] : null;
+      const borderColor = TYPE_BORDER_COLORS[evt.type || ""] || "#9ca3af";
+
+      if (tagStyle) {
+        return {
+          ...evt,
+          backgroundColor: tagStyle.bg,     // 카테고리 배경색 (인기분야 색상)
+          textColor: tagStyle.color,         // 카테고리 글자색
+          borderColor: borderColor,          // 유형별 왼쪽 보더 (접수🔵/시험🔴/발표🟢)
+        };
+      }
+
+      // cert_id 매칭 안 되는 경우 기존 색상에 보더만 적용
+      return { ...evt, borderColor };
+    });
+  }, [filteredEvents, certifications]);
+
   useEffect(() => {
     const loadCalendar = async () => {
       if (typeof window === "undefined" || !calendarRef.current) return;
@@ -86,7 +116,7 @@ export default function CalendarSection({
             center: "title",
             right: "", // 커스텀 스위치로 대체
           },
-          events: filteredEvents,
+          events: coloredEvents,
           eventDisplay: "block",
           dayMaxEvents: 6,
           contentHeight: 900,
@@ -134,7 +164,7 @@ export default function CalendarSection({
       calendarInstance.current?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredEvents]);
+  }, [coloredEvents]);
 
   // 뷰 모드 전환
   useEffect(() => {
@@ -196,24 +226,39 @@ export default function CalendarSection({
       </div>
 
       <div className="bg-white rounded-card p-8 shadow-card">
-        {/* Legend */}
-        <div className="flex gap-6 mb-6 flex-wrap">
+        {/* Legend - 유형별 왼쪽 보더 */}
+        <div className="flex gap-6 mb-3 flex-wrap items-center">
+          <span className="text-[13px] font-semibold text-[#1b1c1d]">왼쪽 보더:</span>
           <div className="flex items-center gap-2 text-[13px] text-[#616568]">
-            <div className="w-3 h-3 rounded-sm bg-[#93c5fd]" />
+            <div className="w-1.5 h-4 rounded-sm bg-[#3b82f6]" />
             접수 기간
           </div>
           <div className="flex items-center gap-2 text-[13px] text-[#616568]">
-            <div className="w-3 h-3 rounded-sm bg-[#ef4444]" />
+            <div className="w-1.5 h-4 rounded-sm bg-[#dc2626]" />
             시험일
           </div>
           <div className="flex items-center gap-2 text-[13px] text-[#616568]">
-            <div className="w-3 h-3 rounded-sm bg-[#22c55e]" />
-            합격 발표일
+            <div className="w-1.5 h-4 rounded-sm bg-[#16a34a]" />
+            합격 발표
           </div>
           <div className="ml-auto text-[12px] text-[#858a8d]">
             <i className="fas fa-hand-pointer mr-1" />
-            일정을 클릭하면 자격증 상세 정보를 확인할 수 있습니다
+            일정 클릭 시 상세 정보 확인
           </div>
+        </div>
+
+        {/* Legend - 카테고리별 배경색 */}
+        <div className="flex gap-3 mb-6 flex-wrap items-center">
+          <span className="text-[13px] font-semibold text-[#1b1c1d]">배경색:</span>
+          {Object.entries(TAG_STYLES).map(([tag, style]) => (
+            <div key={tag} className="flex items-center gap-1.5 text-[12px] text-[#616568]">
+              <div
+                className="w-3 h-3 rounded-sm border border-black/10"
+                style={{ backgroundColor: style.bg }}
+              />
+              {tag}
+            </div>
+          ))}
         </div>
 
         {filteredEvents.length === 0 ? (
