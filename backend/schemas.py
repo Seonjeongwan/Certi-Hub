@@ -102,3 +102,43 @@ class StatsResponse(BaseModel):
     total_certs: int
     total_tags: int
     total_levels: int
+
+
+# ===== CrawlLog Schemas =====
+
+class CrawlLogResponse(BaseModel):
+    id: int
+    source: str
+    status: str
+    method: Optional[str] = None
+    found: int = 0
+    inserted: int = 0
+    updated: int = 0
+    skipped: int = 0
+    duration_sec: Optional[float] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CrawlStatusResponse(BaseModel):
+    """현재 크롤링 상태 요약"""
+    is_running: bool
+    last_run: Optional[datetime] = None
+    last_status: Optional[str] = None
+    next_scheduled: Optional[str] = None
+    sources: dict  # source별 마지막 성공 정보
+
+
+class CrawlTriggerRequest(BaseModel):
+    source: str = "all"  # "all" | "qnet" | "kdata" | "cloud" | "finance" | "it_domestic" | "intl"
+
+
+class SeedSyncResponse(BaseModel):
+    """seed-events.ts 동기화 결과"""
+    status: str
+    events_count: int
+    file_path: str

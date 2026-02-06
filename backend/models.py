@@ -3,6 +3,7 @@ SQLAlchemy ORM 모델 (guide.md 3절 ERD 매핑)
 
 3.1 certifications 테이블 (마스터)
 3.2 exam_schedules 테이블 (일정)
+3.3 crawl_logs 테이블 (크롤링 이력)
 """
 
 import uuid
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Column,
     String,
     Integer,
+    Float,
     Date,
     DateTime,
     Text,
@@ -18,7 +20,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Index,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -91,3 +93,41 @@ class ExamSchedule(Base):
 
     def __repr__(self):
         return f"<ExamSchedule cert={self.cert_id} date={self.exam_date}>"
+
+
+class CrawlLog(Base):
+    """
+    크롤링 실행 이력 테이블 (3.3)
+    각 크롤러 실행마다 한 줄씩 기록하여 상태/통계를 추적
+    """
+
+    __tablename__ = "crawl_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(50), nullable=False, comment="크롤러 이름 (qnet, kdata, cloud 등)")
+    status = Column(
+        SAEnum("running", "success", "failed", name="crawl_status"),
+        nullable=False,
+        default="running",
+        comment="실행 상태",
+    )
+    method = Column(String(20), nullable=True, comment="수집 방법 (api, scraping, cache)")
+    found = Column(Integer, default=0, comment="매칭된 자격증 수")
+    inserted = Column(Integer, default=0, comment="신규 삽입 건수")
+    updated = Column(Integer, default=0, comment="업데이트 건수")
+    skipped = Column(Integer, default=0, comment="건너뛴 건수")
+    duration_sec = Column(Float, nullable=True, comment="실행 소요 시간(초)")
+    error_message = Column(Text, nullable=True, comment="실패 시 에러 메시지")
+    detail = Column(JSONB, nullable=True, comment="상세 결과 JSON")
+    started_at = Column(DateTime, default=datetime.utcnow, comment="시작 시각")
+    finished_at = Column(DateTime, nullable=True, comment="완료 시각")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_crawl_source", "source"),
+        Index("ix_crawl_status", "status"),
+        Index("ix_crawl_started_at", "started_at"),
+    )
+
+    def __repr__(self):
+        return f"<CrawlLog {self.source} [{self.status}] {self.started_at}>"

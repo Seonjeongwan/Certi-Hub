@@ -1,8 +1,14 @@
 """
 Certi-Hub FastAPI 메인 애플리케이션
 guide.md 2절 - Backend: FastAPI (Python)
+
+확장 기능:
+  - APScheduler: 매일 새벽 3시 자동 크롤링
+  - CrawlLog: 크롤링 이력 DB 관리
+  - seed-events.ts: DB → 프론트엔드 fallback 데이터 자동 동기화
 """
 
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,17 +16,37 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import get_settings
 from database import init_db
 from routers import certifications, schedules
+from routers.crawl import router as crawl_router
 
+logger = logging.getLogger("main")
 settings = get_settings()
 
 
-# ===== Lifespan (DB 초기화) =====
+# ===== Lifespan (DB 초기화 + 스케줄러 시작) =====
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """서버 시작 시 DB 테이블 자동 생성"""
+    """서버 시작 시 DB 테이블 자동 생성 + APScheduler 시작"""
     await init_db()
+
+    # APScheduler 시작 (정기 크롤링)
+    try:
+        from services.scheduler import start_scheduler, stop_scheduler
+        start_scheduler()
+        logger.info("🕐 APScheduler 정기 크롤링 스케줄러 시작됨")
+    except ImportError:
+        logger.warning("⚠️ APScheduler 미설치 — 정기 크롤링 비활성화 (pip install apscheduler)")
+    except Exception as e:
+        logger.warning(f"⚠️ APScheduler 시작 실패: {e}")
+
     yield
+
+    # APScheduler 종료
+    try:
+        from services.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
 
 
 # ===== FastAPI App =====
@@ -50,6 +76,7 @@ app.add_middleware(
 
 app.include_router(certifications.router)
 app.include_router(schedules.router)
+app.include_router(crawl_router)
 
 
 # ===== 헬스체크 & 통계 =====
@@ -81,60 +108,20 @@ async def get_stats():
     }
 
 
-# ===== 크롤러 수동 실행 엔드포인트 =====
+# ===== 크롤러 수동 실행 엔드포인트 (레거시 호환 — 새 API: /api/crawl/trigger) =====
 
-@app.post("/api/crawl")
-async def trigger_crawl(source: str = "all"):
+@app.post("/api/crawl-legacy")
+async def trigger_crawl_legacy(source: str = "all"):
     """
-    크롤러 수동 실행 (관리자용)
-    - source: "all" | "qnet" | "kdata" | "cloud" | "finance" | "it_domestic" | "intl"
-
-    3단계 Fallback 전략:
-      1단계: 공식 API (공공데이터포털, 벤더 API)
-      2단계: 웹 크롤링 (HTML 파싱)
-      3단계: 캐시 데이터 (마지막 성공 데이터)
+    (레거시) 크롤러 수동 실행 — 새 API로 /api/crawl/trigger 사용을 권장합니다.
+    새 API는 CrawlLog 기록 + seed-events.ts 자동 동기화를 포함합니다.
     """
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
-
-    results = {}
-    executor = ThreadPoolExecutor(max_workers=1)
-    loop = asyncio.get_event_loop()
-
-    if source in ("all", "qnet"):
-        from crawlers.qnet_scraper import run as qnet_run
-        stats = await loop.run_in_executor(executor, qnet_run)
-        results["qnet"] = stats
-
-    if source in ("all", "kdata"):
-        from crawlers.kdata_scraper import run as kdata_run
-        stats = await loop.run_in_executor(executor, kdata_run)
-        results["kdata"] = stats
-
-    if source in ("all", "cloud"):
-        from crawlers.cloud_scraper import run as cloud_run
-        stats = await loop.run_in_executor(executor, cloud_run)
-        results["cloud"] = stats
-
-    if source in ("all", "finance"):
-        from crawlers.finance_scraper import run as finance_run
-        stats = await loop.run_in_executor(executor, finance_run)
-        results["finance"] = stats
-
-    if source in ("all", "it_domestic"):
-        from crawlers.it_domestic_scraper import run as it_domestic_run
-        stats = await loop.run_in_executor(executor, it_domestic_run)
-        results["it_domestic"] = stats
-
-    if source in ("all", "intl"):
-        from crawlers.intl_cert_scraper import run as intl_run
-        stats = await loop.run_in_executor(executor, intl_run)
-        results["intl"] = stats
-
+    from services.scheduler import run_crawl_job
+    results = await run_crawl_job(source)
     return {
         "status": "completed",
-        "strategy": "3-tier fallback (API → Scraping → Cache)",
-        "sources": list(results.keys()),
+        "strategy": "3-tier fallback (API → Scraping → Cache) + CrawlLog + seed-sync",
+        "sources": [r["source"] for r in results],
         "results": results,
     }
 

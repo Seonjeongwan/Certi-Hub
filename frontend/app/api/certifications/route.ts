@@ -3,7 +3,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// 서버사이드: Docker 내부 URL 우선 사용 (backend 컨테이너 → backend:8000)
+const API_BASE = process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function GET(request: NextRequest) {
   try {

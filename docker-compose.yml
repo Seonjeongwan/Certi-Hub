@@ -1,6 +1,16 @@
 # =====================================================
 # Certi-Hub Docker Compose
 # guide.md 2절 시스템 아키텍처 기반 컨테이너 구성
+#
+# 사용법:
+#   docker compose up -d          # 전체 서비스 시작
+#   docker compose up -d --build  # 이미지 재빌드 + 시작
+#   docker compose logs -f        # 로그 확인
+#   docker compose down           # 서비스 중지
+#   docker compose down -v        # 서비스 중지 + 볼륨 삭제
+#
+# 크롤러 수동 실행:
+#   docker compose exec backend python -m crawlers.run_crawlers
 # =====================================================
 
 services:
@@ -10,19 +20,20 @@ services:
     container_name: certihub-db
     environment:
       POSTGRES_DB: certihub
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # ===== FastAPI 백엔드 =====
   backend:
@@ -31,21 +42,24 @@ services:
       dockerfile: Dockerfile
     container_name: certihub-backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/certihub
-      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@db:5432/certihub
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/certihub
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/certihub
       FRONTEND_URL: http://localhost:3000
-      DEBUG: "true"
+      FRONTEND_SEED_PATH: /frontend-lib/seed-events.ts
+      DEBUG: ${DEBUG:-true}
       CACHE_DIR: /app/cache
-      DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}  # 공공데이터포털 API 키 (선택)
+      DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
       - crawler_cache:/app/cache
+      - ./frontend/lib:/frontend-lib    # seed-events.ts 동기화용
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
 
   # ===== Next.js 프론트엔드 =====
   frontend:
@@ -54,9 +68,10 @@ services:
       dockerfile: Dockerfile
     container_name: certihub-frontend
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
+      API_URL_INTERNAL: http://backend:8000
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - backend
     volumes:
@@ -64,6 +79,7 @@ services:
       - /app/node_modules
       - /app/.next
     command: npm run dev
+    restart: unless-stopped
 
 volumes:
   postgres_data:

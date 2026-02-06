@@ -29,5 +29,9 @@ backend/__pycache__/
 # === Docker ===
 postgres_data/
 
+# === 크롤러 캐시 ===
+backend/cache/
+cache/
+
 # === OS ===
 Thumbs.db

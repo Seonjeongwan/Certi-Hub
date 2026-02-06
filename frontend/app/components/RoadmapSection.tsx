@@ -8,10 +8,11 @@ import CertCard from "./CertCard";
 interface RoadmapSectionProps {
   certifications: Certification[];
   onCertClick: (cert: Certification) => void;
+  activeTag: string;
+  onTagChange: (tag: string) => void;
 }
 
-export default function RoadmapSection({ certifications, onCertClick }: RoadmapSectionProps) {
-  const [activeTag, setActiveTag] = useState("all");
+export default function RoadmapSection({ certifications, onCertClick, activeTag, onTagChange }: RoadmapSectionProps) {
   const [activeLevel, setActiveLevel] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
 
@@ -81,7 +82,7 @@ export default function RoadmapSection({ certifications, onCertClick }: RoadmapS
       {/* Category Tabs */}
       <div className="flex flex-wrap gap-2 mb-8 p-1">
         <button
-          onClick={() => setActiveTag("all")}
+          onClick={() => onTagChange("all")}
           className={`px-5 py-2 rounded-full border-[1.5px] text-sm font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
             activeTag === "all"
               ? "bg-primary text-white border-primary"
@@ -95,7 +96,7 @@ export default function RoadmapSection({ certifications, onCertClick }: RoadmapS
           return (
             <button
               key={tag}
-              onClick={() => setActiveTag(tag)}
+              onClick={() => onTagChange(tag)}
               className={`px-5 py-2 rounded-full border-[1.5px] text-sm font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
                 activeTag === tag
                   ? "bg-primary text-white border-primary"

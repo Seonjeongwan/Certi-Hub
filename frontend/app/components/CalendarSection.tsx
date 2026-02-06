@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CalendarEvent, Certification } from "@/lib/types";
 
 interface CalendarSectionProps {
   events: CalendarEvent[];
   certifications: Certification[];
   onCertClick: (cert: Certification) => void;
+  activeTag: string;
 }
 
 export default function CalendarSection({
   events,
   certifications,
   onCertClick,
+  activeTag,
 }: CalendarSectionProps) {
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarInstance = useRef<any>(null);
@@ -31,6 +33,34 @@ export default function CalendarSection({
       .replace(/\s*\d+회\s*/, "")
       .trim();
   }, []);
+
+  // activeTag에 따라 이벤트 필터링
+  const filteredEvents = useMemo(() => {
+    if (activeTag === "all") return events;
+
+    // 해당 태그에 속하는 자격증 ID 셋
+    const tagCertIds = new Set(
+      certifications
+        .filter((c) => c.tag === activeTag)
+        .map((c) => c.id)
+    );
+
+    // 해당 태그에 속하는 자격증 이름 목록
+    const tagCertNames = certifications
+      .filter((c) => c.tag === activeTag)
+      .map((c) => c.name_ko);
+
+    return events.filter((evt) => {
+      // 1순위: cert_id 기반 매칭
+      if (evt.cert_id && tagCertIds.has(evt.cert_id)) return true;
+
+      // 2순위: 이벤트 제목에서 자격증 이름 매칭 (fallback)
+      const evtCertName = extractCertName(evt.title);
+      return tagCertNames.some(
+        (name) => name === evtCertName || name.includes(evtCertName) || evtCertName.includes(name)
+      );
+    });
+  }, [events, certifications, activeTag, extractCertName]);
 
   useEffect(() => {
     const loadCalendar = async () => {
@@ -56,10 +86,10 @@ export default function CalendarSection({
             center: "title",
             right: "", // 커스텀 스위치로 대체
           },
-          events: events,
+          events: filteredEvents,
           eventDisplay: "block",
-          dayMaxEvents: 3,
-          height: "auto",
+          dayMaxEvents: 6,
+          contentHeight: 900,
           eventClick: (info: any) => {
             info.jsEvent.preventDefault();
 
@@ -104,7 +134,7 @@ export default function CalendarSection({
       calendarInstance.current?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events]);
+  }, [filteredEvents]);
 
   // 뷰 모드 전환
   useEffect(() => {
@@ -124,15 +154,20 @@ export default function CalendarSection({
         <div>
           <h2 className="text-[26px] font-extrabold text-[#1b1c1d]">
             <i className="fas fa-calendar-days mr-2.5 text-primary" />
-            시험 일정 캘린더
+            {activeTag === "all" ? "시험 일정" : `${activeTag}`} 캘린더
+            <span className="text-base font-semibold text-[#858a8d] ml-2">
+              ({filteredEvents.length}건)
+            </span>
           </h2>
           <p className="text-[#858a8d] text-[15px] mt-1.5">
-            시험 접수일, 시험일, 합격 발표일을 한눈에 확인하세요
+            {activeTag === "all"
+              ? "시험 접수일, 시험일, 합격 발표일을 한눈에 확인하세요"
+              : `로드맵에서 선택한 "${activeTag}" 카테고리의 시험 일정입니다`}
           </p>
         </div>
 
         {/* ===== Month / List 스위치 토글 ===== */}
-        {events.length > 0 && (
+        {filteredEvents.length > 0 && (
           <div className="flex items-center bg-gray-100 rounded-full p-1 shadow-inner">
             <button
               onClick={() => setViewMode("month")}
@@ -181,16 +216,18 @@ export default function CalendarSection({
           </div>
         </div>
 
-        {events.length === 0 ? (
+        {filteredEvents.length === 0 ? (
           <div className="text-center py-16">
             <i className="fas fa-calendar-xmark text-5xl text-gray-300 mb-4 block" />
             <h3 className="text-lg font-bold text-gray-500 mb-2">
-              등록된 시험 일정이 없습니다
+              {activeTag === "all"
+                ? "등록된 시험 일정이 없습니다"
+                : `"${activeTag}" 카테고리에 해당하는 시험 일정이 없습니다`}
             </h3>
             <p className="text-sm text-gray-400">
-              현재 등록된 시험 일정 데이터가 없습니다.
-              <br />
-              크롤러가 실행되면 자동으로 업데이트됩니다.
+              {activeTag === "all"
+                ? <>현재 등록된 시험 일정 데이터가 없습니다.<br />크롤러가 실행되면 자동으로 업데이트됩니다.</>
+                : "로드맵에서 다른 카테고리를 선택하거나 \"전체\"를 선택해 보세요."}
             </p>
           </div>
         ) : (

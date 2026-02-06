@@ -22,6 +22,7 @@ import time
 import logging
 import argparse
 from datetime import datetime
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -219,9 +220,29 @@ def print_summary(results):
     return results
 
 
+def sync_seed_events_ts():
+    """크롤링 완료 후 seed-events.ts 자동 동기화"""
+    try:
+        # 상위 경로에서 services 모듈 접근
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from services.seed_sync import sync_seed_events
+
+        result = sync_seed_events()
+        if result["status"] == "success":
+            logger.info(f"📝 seed-events.ts 동기화 완료: {result['events_count']}건 → {result['file_path']}")
+        else:
+            logger.info(f"📝 seed-events.ts 동기화 건너뜀: {result['status']}")
+        return result
+    except Exception as e:
+        logger.warning(f"⚠️ seed-events.ts 동기화 실패 (서비스 운영에 영향 없음): {e}")
+        return {"status": "failed", "error": str(e)}
+
+
 def run_all_crawlers() -> list:
     """
     모든 크롤러 실행 (FastAPI 엔드포인트용 동기 함수)
+    크롤링 완료 후 seed-events.ts 자동 동기화
     """
     results = [
         run_qnet(),
@@ -232,6 +253,10 @@ def run_all_crawlers() -> list:
         run_intl_cert(),
     ]
     print_summary(results)
+
+    # 크롤링 완료 후 seed-events.ts 동기화
+    sync_seed_events_ts()
+
     return results
 
 
@@ -269,6 +294,9 @@ def main():
         results.append(run_intl_cert())
 
     print_summary(results)
+
+    # 크롤링 완료 후 seed-events.ts 동기화
+    sync_seed_events_ts()
 
     # 하나라도 실패하면 exit code 1
     if any(r["status"] == "failed" for r in results):

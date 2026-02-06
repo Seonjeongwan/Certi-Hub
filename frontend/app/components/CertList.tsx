@@ -7,13 +7,19 @@ import CertCard from "./CertCard";
 interface CertListProps {
   certifications: Certification[];
   onCertClick: (cert: Certification) => void;
+  activeTag: string;
 }
 
-export default function CertList({ certifications, onCertClick }: CertListProps) {
+export default function CertList({ certifications, onCertClick, activeTag }: CertListProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
+  // 카테고리 필터 → 검색 필터 순서로 적용
+  const tagFiltered = activeTag === "all"
+    ? certifications
+    : certifications.filter((c) => c.tag === activeTag);
+
   const filtered = searchQuery
-    ? certifications.filter((c) => {
+    ? tagFiltered.filter((c) => {
         const q = searchQuery.toLowerCase();
         return (
           c.name_ko.toLowerCase().includes(q) ||
@@ -22,7 +28,7 @@ export default function CertList({ certifications, onCertClick }: CertListProps)
           c.sub_tag.toLowerCase().includes(q)
         );
       })
-    : certifications;
+    : tagFiltered;
 
   return (
     <section className="max-w-[1400px] mx-auto py-[60px] px-6" id="certs">
@@ -30,10 +36,15 @@ export default function CertList({ certifications, onCertClick }: CertListProps)
         <div>
           <h2 className="text-[26px] font-extrabold text-[#1b1c1d]">
             <i className="fas fa-list-check mr-2.5 text-primary" />
-            전체 자격증 목록
+            {activeTag === "all" ? "전체" : activeTag} 자격증 목록
+            <span className="text-base font-semibold text-[#858a8d] ml-2">
+              ({filtered.length}건)
+            </span>
           </h2>
           <p className="text-[#858a8d] text-[15px] mt-1.5">
-            검색 및 필터로 원하는 자격증을 빠르게 찾아보세요
+            {activeTag === "all"
+              ? "검색 및 필터로 원하는 자격증을 빠르게 찾아보세요"
+              : `로드맵에서 선택한 "${activeTag}" 카테고리의 자격증입니다`}
           </p>
         </div>
         <div className="relative max-w-[300px] w-full">

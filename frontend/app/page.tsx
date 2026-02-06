@@ -22,6 +22,7 @@ export default function HomePage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedCert, setSelectedCert] = useState<Certification | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTag, setActiveTag] = useState("all");
 
   useEffect(() => {
     const loadData = async () => {
@@ -96,13 +97,23 @@ export default function HomePage() {
         totalCerts={certifications.length}
         onSelectCert={setSelectedCert}
       />
-      <PopularGrid certifications={certifications} onTagClick={handleTagClick} />
-      <RoadmapSection certifications={certifications} onCertClick={setSelectedCert} />
-      <CertList certifications={certifications} onCertClick={setSelectedCert} />
+      <PopularGrid certifications={certifications} onTagClick={(tag) => { setActiveTag(tag); handleTagClick(tag); }} />
+      <RoadmapSection
+        certifications={certifications}
+        onCertClick={setSelectedCert}
+        activeTag={activeTag}
+        onTagChange={setActiveTag}
+      />
+      <CertList
+        certifications={certifications}
+        onCertClick={setSelectedCert}
+        activeTag={activeTag}
+      />
       <CalendarSection
         events={events}
         certifications={certifications}
         onCertClick={setSelectedCert}
+        activeTag={activeTag}
       />
       <Footer />
       <ScrollToTop />

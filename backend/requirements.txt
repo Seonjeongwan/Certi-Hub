@@ -15,5 +15,8 @@ beautifulsoup4==4.12.3
 selenium==4.21.0
 scrapy==2.11.2
 
+# ===== 스케줄링 (정기 크롤링) =====
+apscheduler==3.10.4
+
 # ===== 유틸리티 =====
 openpyxl==3.1.2

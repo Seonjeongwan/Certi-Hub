@@ -68,6 +68,34 @@ CREATE OR REPLACE TRIGGER tr_schedule_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- ===== 3.3 crawl_logs 테이블 (크롤링 이력) =====
+DO $$ BEGIN
+    CREATE TYPE crawl_status AS ENUM ('running', 'success', 'failed');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS crawl_logs (
+    id            SERIAL PRIMARY KEY,
+    source        VARCHAR(50)   NOT NULL,                     -- 크롤러 이름
+    status        crawl_status  NOT NULL DEFAULT 'running',   -- 실행 상태
+    method        VARCHAR(20),                                -- 수집 방법 (api/scraping/cache)
+    found         INTEGER       DEFAULT 0,                    -- 매칭된 자격증 수
+    inserted      INTEGER       DEFAULT 0,                    -- 신규 삽입 건수
+    updated       INTEGER       DEFAULT 0,                    -- 업데이트 건수
+    skipped       INTEGER       DEFAULT 0,                    -- 건너뛴 건수
+    duration_sec  REAL,                                       -- 실행 소요 시간(초)
+    error_message TEXT,                                       -- 실패 시 에러 메시지
+    detail        JSONB,                                      -- 상세 결과 JSON
+    started_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),     -- 시작 시각
+    finished_at   TIMESTAMP WITH TIME ZONE,                   -- 완료 시각
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_crawl_source     ON crawl_logs (source);
+CREATE INDEX IF NOT EXISTS ix_crawl_status     ON crawl_logs (status);
+CREATE INDEX IF NOT EXISTS ix_crawl_started_at ON crawl_logs (started_at);
+
 -- ===== Supabase RLS (Row Level Security) 설정 예시 =====
 -- ALTER TABLE certifications ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "공개 읽기" ON certifications FOR SELECT USING (true);
