@@ -29,8 +29,12 @@ export default function CertCard({ cert, onClick }: CertCardProps) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="bg-white rounded-card p-6 shadow-card transition-all border border-[#e9ecef] cursor-pointer relative overflow-hidden hover:-translate-y-1 hover:shadow-card-hover hover:border-primary"
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      className="bg-white rounded-card p-4 sm:p-6 shadow-card transition-all border border-[#e9ecef] cursor-pointer relative overflow-hidden hover:-translate-y-1 hover:shadow-card-hover hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+      aria-label={`${cert.name_ko} - ${cert.tag} ${LEVEL_LABELS[cert.level]}`}
     >
       {/* Top color bar */}
       <div className={`absolute top-0 left-0 right-0 h-1 ${topBorderColor[cert.level]}`} />

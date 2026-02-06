@@ -6,6 +6,7 @@ guide.md 2절 - Backend: FastAPI (Python)
   - APScheduler: 매일 새벽 3시 자동 크롤링
   - CrawlLog: 크롤링 이력 DB 관리
   - seed-events.ts: DB → 프론트엔드 fallback 데이터 자동 동기화
+  - 구조적 로깅 + 글로벌 에러 핸들링 미들웨어
 """
 
 import logging
@@ -15,8 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
 from database import init_db
+from logging_config import setup_logging
+from middleware import RequestLoggingMiddleware
 from routers import certifications, schedules
 from routers.crawl import router as crawl_router
+
+# 로깅 초기화 (앱 시작 전에 설정)
+setup_logging()
 
 logger = logging.getLogger("main")
 settings = get_settings()
@@ -28,6 +34,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """서버 시작 시 DB 테이블 자동 생성 + APScheduler 시작"""
     await init_db()
+    logger.info("✅ 데이터베이스 초기화 완료")
 
     # APScheduler 시작 (정기 크롤링)
     try:
@@ -48,6 +55,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    logger.info("🛑 서버 종료")
+
 
 # ===== FastAPI App =====
 
@@ -58,19 +67,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ===== CORS 설정 (Next.js 프론트엔드 허용) =====
+# ===== 미들웨어 (순서 중요: 아래서부터 위로 실행) =====
+
+# 1. CORS (가장 먼저 처리)
+allowed_origins = [
+    settings.FRONTEND_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost",
+]
+# 프로덕션에서는 환경변수로 제어
+if not settings.DEBUG:
+    allowed_origins = [o for o in allowed_origins if o]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_URL,
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
+
+# 2. 요청 로깅 + 에러 핸들링
+app.add_middleware(RequestLoggingMiddleware)
 
 # ===== 라우터 등록 =====
 
@@ -83,7 +102,25 @@ app.include_router(crawl_router)
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "service": settings.APP_NAME}
+    """헬스체크 — 서비스 상태 + DB 연결 확인"""
+    from database import async_session
+    from sqlalchemy import text
+
+    db_ok = False
+    try:
+        async with async_session() as db:
+            await db.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception:
+        pass
+
+    status = "ok" if db_ok else "degraded"
+    return {
+        "status": status,
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "database": "connected" if db_ok else "disconnected",
+    }
 
 
 @app.get("/api/stats")

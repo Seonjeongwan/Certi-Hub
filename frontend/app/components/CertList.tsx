@@ -31,17 +31,17 @@ export default function CertList({ certifications, onCertClick, activeTag }: Cer
     : tagFiltered;
 
   return (
-    <section className="max-w-[1400px] mx-auto py-[60px] px-6" id="certs">
-      <div className="flex items-center justify-between mb-8 flex-col md:flex-row gap-4">
+    <section className="max-w-[1400px] mx-auto py-8 sm:py-[60px] px-4 sm:px-6" id="certs">
+      <div className="flex items-center justify-between mb-6 sm:mb-8 flex-col md:flex-row gap-3 sm:gap-4">
         <div>
-          <h2 className="text-[26px] font-extrabold text-[#1b1c1d]">
-            <i className="fas fa-list-check mr-2.5 text-primary" />
+          <h2 className="text-[22px] sm:text-[26px] font-extrabold text-[#1b1c1d]">
+            <i className="fas fa-list-check mr-2 sm:mr-2.5 text-primary" />
             {activeTag === "all" ? "전체" : activeTag} 자격증 목록
-            <span className="text-base font-semibold text-[#858a8d] ml-2">
+            <span className="text-sm sm:text-base font-semibold text-[#858a8d] ml-2">
               ({filtered.length}건)
             </span>
           </h2>
-          <p className="text-[#858a8d] text-[15px] mt-1.5">
+          <p className="text-[#858a8d] text-[13px] sm:text-[15px] mt-1 sm:mt-1.5">
             {activeTag === "all"
               ? "검색 및 필터로 원하는 자격증을 빠르게 찾아보세요"
               : `로드맵에서 선택한 "${activeTag}" 카테고리의 자격증입니다`}
@@ -65,7 +65,7 @@ export default function CertList({ certifications, onCertClick, activeTag }: Cer
           <p className="text-base">검색 결과가 없습니다.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 sm:gap-5">
           {filtered.map((cert) => (
             <CertCard key={cert.id} cert={cert} onClick={() => onCertClick(cert)} />
           ))}

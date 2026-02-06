@@ -31,6 +31,16 @@ body {
   background: var(--bg-body);
   color: var(--text-dark);
   line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ===== 스크롤바 숨김 (카테고리 탭 등) ===== */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* ===== FullCalendar 커스텀 스타일 ===== */
@@ -65,6 +75,33 @@ body {
 .fc .fc-event:hover {
   opacity: 0.85;
   transform: translateY(-1px);
+}
+
+/* ===== 모바일 캘린더 최적화 ===== */
+@media (max-width: 639px) {
+  .fc .fc-event {
+    font-size: 10px;
+    padding: 1px 4px;
+    border-left-width: 4px !important;
+  }
+
+  .fc .fc-daygrid-day-number {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+
+  .fc .fc-col-header-cell-cushion {
+    font-size: 12px;
+    padding: 4px 2px;
+  }
+
+  .fc .fc-list-event-title {
+    font-size: 12px;
+  }
+
+  .fc .fc-list-event-time {
+    font-size: 11px;
+  }
 }
 
 /* ===== 자격증 칩 공통 ===== */

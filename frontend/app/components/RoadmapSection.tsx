@@ -41,15 +41,15 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
   });
 
   return (
-    <section className="max-w-[1400px] mx-auto py-[60px] px-6" id="roadmap">
+    <section className="max-w-[1400px] mx-auto py-8 sm:py-[60px] px-4 sm:px-6" id="roadmap">
       {/* Section Header */}
-      <div className="flex items-center justify-between mb-8 flex-col md:flex-row gap-4">
+      <div className="flex items-center justify-between mb-6 sm:mb-8 flex-col md:flex-row gap-3 sm:gap-4">
         <div>
-          <h2 className="text-[26px] font-extrabold text-[#1b1c1d]">
-            <i className="fas fa-route mr-2.5 text-primary" />
+          <h2 className="text-[22px] sm:text-[26px] font-extrabold text-[#1b1c1d]">
+            <i className="fas fa-route mr-2 sm:mr-2.5 text-primary" />
             자격증 로드맵
           </h2>
-          <p className="text-[#858a8d] text-[15px] mt-1.5">
+          <p className="text-[#858a8d] text-[13px] sm:text-[15px] mt-1 sm:mt-1.5">
             분야별 · 레벨별 자격증 취득 경로를 한눈에 확인하세요
           </p>
         </div>
@@ -80,10 +80,10 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
       </div>
 
       {/* Category Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 p-1">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-6 sm:mb-8 p-1 -mx-1 sm:mx-0 overflow-x-auto scrollbar-hide">
         <button
           onClick={() => onTagChange("all")}
-          className={`px-5 py-2 rounded-full border-[1.5px] text-sm font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
+          className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border-[1.5px] text-xs sm:text-sm font-semibold cursor-pointer transition-all flex items-center gap-1 sm:gap-1.5 shrink-0 ${
             activeTag === "all"
               ? "bg-primary text-white border-primary"
               : "bg-white text-[#616568] border-[#e9ecef] hover:border-primary hover:text-primary"
@@ -97,7 +97,7 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
             <button
               key={tag}
               onClick={() => onTagChange(tag)}
-              className={`px-5 py-2 rounded-full border-[1.5px] text-sm font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
+              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border-[1.5px] text-xs sm:text-sm font-semibold cursor-pointer transition-all flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeTag === tag
                   ? "bg-primary text-white border-primary"
                   : "bg-white text-[#616568] border-[#e9ecef] hover:border-primary hover:text-primary"
@@ -215,7 +215,7 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
               <p className="text-base">해당 조건에 맞는 자격증이 없습니다.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4 sm:gap-5">
               {filtered.map((cert) => (
                 <CertCard key={cert.id} cert={cert} onClick={() => onCertClick(cert)} />
               ))}
