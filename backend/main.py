@@ -87,7 +87,7 @@ async def get_stats():
 async def trigger_crawl(source: str = "all"):
     """
     크롤러 수동 실행 (관리자용)
-    - source: "all" | "qnet" | "kdata" | "cloud"
+    - source: "all" | "qnet" | "kdata" | "cloud" | "finance" | "it_domestic" | "intl"
 
     3단계 Fallback 전략:
       1단계: 공식 API (공공데이터포털, 벤더 API)
@@ -116,9 +116,25 @@ async def trigger_crawl(source: str = "all"):
         stats = await loop.run_in_executor(executor, cloud_run)
         results["cloud"] = stats
 
+    if source in ("all", "finance"):
+        from crawlers.finance_scraper import run as finance_run
+        stats = await loop.run_in_executor(executor, finance_run)
+        results["finance"] = stats
+
+    if source in ("all", "it_domestic"):
+        from crawlers.it_domestic_scraper import run as it_domestic_run
+        stats = await loop.run_in_executor(executor, it_domestic_run)
+        results["it_domestic"] = stats
+
+    if source in ("all", "intl"):
+        from crawlers.intl_cert_scraper import run as intl_run
+        stats = await loop.run_in_executor(executor, intl_run)
+        results["intl"] = stats
+
     return {
         "status": "completed",
         "strategy": "3-tier fallback (API → Scraping → Cache)",
+        "sources": list(results.keys()),
         "results": results,
     }
 

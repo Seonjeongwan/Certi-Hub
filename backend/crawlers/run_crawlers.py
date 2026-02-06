@@ -8,10 +8,13 @@
   3단계: 캐시 데이터
 
 사용법:
-  python -m crawlers.run_crawlers          # 전체 실행
-  python -m crawlers.run_crawlers --qnet   # Q-Net만
-  python -m crawlers.run_crawlers --kdata  # KData만
-  python -m crawlers.run_crawlers --cloud  # Cloud만
+  python -m crawlers.run_crawlers              # 전체 실행
+  python -m crawlers.run_crawlers --qnet       # Q-Net만
+  python -m crawlers.run_crawlers --kdata      # KData만
+  python -m crawlers.run_crawlers --cloud      # Cloud만
+  python -m crawlers.run_crawlers --finance    # 금융 자격증만
+  python -m crawlers.run_crawlers --itdomestic # 국내 IT 자격증만
+  python -m crawlers.run_crawlers --intl       # 국제 CBT 자격증만
 """
 
 import sys
@@ -99,6 +102,78 @@ def run_cloud():
         scraper.close()
 
 
+def run_finance():
+    """금융 자격증 크롤러 실행"""
+    from crawlers.finance_scraper import FinanceScraper
+
+    logger.info("=" * 60)
+    logger.info("💰 금융 자격증 크롤러 시작 (KOFIA/KBI/FPKOREA)")
+    logger.info("   전략: AJAX API → 웹크롤링 → 캐시")
+    logger.info("=" * 60)
+    start = time.time()
+    scraper = FinanceScraper()
+    try:
+        stats = scraper.save_to_db()
+        elapsed = time.time() - start
+        method = scraper.method_used
+        logger.info(f"Finance 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "Finance", "status": "success", "stats": stats, "time": elapsed, "method": method}
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"Finance 크롤러 실패: {e}")
+        return {"name": "Finance", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
+
+
+def run_it_domestic():
+    """국내 IT 자격증 크롤러 실행"""
+    from crawlers.it_domestic_scraper import ITDomesticScraper
+
+    logger.info("=" * 60)
+    logger.info("🖥️  국내 IT 자격증 크롤러 시작 (ICQA/IHD/KSTQB/상공회의소)")
+    logger.info("   전략: 기관 API/웹 → 크롤링 → 캐시")
+    logger.info("=" * 60)
+    start = time.time()
+    scraper = ITDomesticScraper()
+    try:
+        stats = scraper.save_to_db()
+        elapsed = time.time() - start
+        method = scraper.method_used
+        logger.info(f"IT Domestic 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "IT Domestic", "status": "success", "stats": stats, "time": elapsed, "method": method}
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"IT Domestic 크롤러 실패: {e}")
+        return {"name": "IT Domestic", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
+
+
+def run_intl_cert():
+    """국제 CBT 자격증 크롤러 실행"""
+    from crawlers.intl_cert_scraper import IntlCertScraper
+
+    logger.info("=" * 60)
+    logger.info("🌐 국제 CBT 자격증 크롤러 시작 (ISC2/Cisco/Oracle/PMI...)")
+    logger.info("   전략: 벤더API → URL유효성확인 → 캐시")
+    logger.info("=" * 60)
+    start = time.time()
+    scraper = IntlCertScraper()
+    try:
+        stats = scraper.save_to_db()
+        elapsed = time.time() - start
+        method = scraper.method_used
+        logger.info(f"Intl Cert 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "Intl Cert", "status": "success", "stats": stats, "time": elapsed, "method": method}
+    except Exception as e:
+        elapsed = time.time() - start
+        logger.error(f"Intl Cert 크롤러 실패: {e}")
+        return {"name": "Intl Cert", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
+
+
 def print_summary(results):
     """실행 결과 요약 출력"""
     logger.info("")
@@ -148,7 +223,14 @@ def run_all_crawlers() -> list:
     """
     모든 크롤러 실행 (FastAPI 엔드포인트용 동기 함수)
     """
-    results = [run_qnet(), run_kdata(), run_cloud()]
+    results = [
+        run_qnet(),
+        run_kdata(),
+        run_cloud(),
+        run_finance(),
+        run_it_domestic(),
+        run_intl_cert(),
+    ]
     print_summary(results)
     return results
 
@@ -158,10 +240,13 @@ def main():
     parser.add_argument("--qnet", action="store_true", help="Q-Net 크롤러만 실행")
     parser.add_argument("--kdata", action="store_true", help="KData 크롤러만 실행")
     parser.add_argument("--cloud", action="store_true", help="Cloud 크롤러만 실행")
+    parser.add_argument("--finance", action="store_true", help="금융 자격증 크롤러만 실행")
+    parser.add_argument("--itdomestic", action="store_true", help="국내 IT 자격증 크롤러만 실행")
+    parser.add_argument("--intl", action="store_true", help="국제 CBT 자격증 크롤러만 실행")
     args = parser.parse_args()
 
     # 아무 옵션도 없으면 전체 실행
-    run_all = not (args.qnet or args.kdata or args.cloud)
+    run_all = not (args.qnet or args.kdata or args.cloud or args.finance or args.itdomestic or args.intl)
 
     results = []
 
@@ -173,6 +258,15 @@ def main():
 
     if run_all or args.cloud:
         results.append(run_cloud())
+
+    if run_all or args.finance:
+        results.append(run_finance())
+
+    if run_all or args.itdomestic:
+        results.append(run_it_domestic())
+
+    if run_all or args.intl:
+        results.append(run_intl_cert())
 
     print_summary(results)
 
