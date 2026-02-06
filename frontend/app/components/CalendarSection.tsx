@@ -27,6 +27,7 @@ export default function CalendarSection({
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarInstance = useRef<any>(null);
   const [viewMode, setViewMode] = useState<"month" | "list">("month");
+  const [calendarTitle, setCalendarTitle] = useState("");
 
   // refs로 최신값 유지 (calendar rebuild 방지)
   const certificationsRef = useRef(certifications);
@@ -111,15 +112,15 @@ export default function CalendarSection({
           initialView:
             viewMode === "month" ? "dayGridMonth" : "listMonth",
           locale: "ko",
-          headerToolbar: {
-            left: "prev,next today",
-            center: "title",
-            right: "", // 커스텀 스위치로 대체
-          },
+          headerToolbar: false, // 기본 툴바 숨기고 커스텀 네비게이션 사용
           events: coloredEvents,
           eventDisplay: "block",
           dayMaxEvents: 6,
           contentHeight: 900,
+          datesSet: (dateInfo: any) => {
+            // 날짜 변경 시 타이틀 업데이트
+            setCalendarTitle(dateInfo.view.title);
+          },
           eventClick: (info: any) => {
             info.jsEvent.preventDefault();
 
@@ -174,6 +175,19 @@ export default function CalendarSection({
       );
     }
   }, [viewMode]);
+
+  // 커스텀 네비게이션 핸들러
+  const handlePrev = useCallback(() => {
+    calendarInstance.current?.prev();
+  }, []);
+
+  const handleNext = useCallback(() => {
+    calendarInstance.current?.next();
+  }, []);
+
+  const handleToday = useCallback(() => {
+    calendarInstance.current?.today();
+  }, []);
 
   return (
     <section
@@ -260,6 +274,40 @@ export default function CalendarSection({
             </div>
           ))}
         </div>
+
+        {/* ===== 커스텀 캘린더 네비게이션 ===== */}
+        {filteredEvents.length > 0 && (
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrev}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-[#e9ecef] bg-white text-[#616568] hover:bg-gray-50 hover:border-primary hover:text-primary transition-all"
+                aria-label="이전 달"
+              >
+                <i className="fas fa-chevron-left text-xs" />
+              </button>
+              <button
+                onClick={handleNext}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-[#e9ecef] bg-white text-[#616568] hover:bg-gray-50 hover:border-primary hover:text-primary transition-all"
+                aria-label="다음 달"
+              >
+                <i className="fas fa-chevron-right text-xs" />
+              </button>
+              <button
+                onClick={handleToday}
+                className="ml-1 px-4 py-1.5 rounded-lg border border-[#e9ecef] bg-white text-[13px] font-semibold text-[#616568] hover:bg-primary hover:text-white hover:border-primary transition-all"
+              >
+                오늘
+              </button>
+            </div>
+
+            <h3 className="text-lg font-bold text-[#1b1c1d]">
+              {calendarTitle}
+            </h3>
+
+            <div className="w-[140px]" /> {/* 우측 여백 (레이아웃 균형) */}
+          </div>
+        )}
 
         {filteredEvents.length === 0 ? (
           <div className="text-center py-16">

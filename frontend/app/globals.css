@@ -34,29 +34,19 @@ body {
 }
 
 /* ===== FullCalendar 커스텀 스타일 ===== */
-.fc .fc-toolbar-title {
-  font-size: 20px !important;
-  font-weight: 700 !important;
-}
 
-.fc .fc-button {
-  background: var(--primary) !important;
-  border-color: var(--primary) !important;
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  padding: 6px 16px !important;
-}
-
-.fc .fc-button:hover {
-  background: var(--primary-dark) !important;
-}
-
-.fc .fc-button-active {
-  background: var(--primary-dark) !important;
+/* 기본 headerToolbar 숨김 (커스텀 네비게이션 사용) */
+.fc .fc-header-toolbar {
+  display: none !important;
 }
 
 .fc .fc-daygrid-day:hover {
   background: #f0fdf4;
+}
+
+/* 오늘 날짜 셀 강조 */
+.fc .fc-day-today {
+  background: var(--primary-light) !important;
 }
 
 .fc .fc-event {
