@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Schedule API error:", error);
     // 백엔드 연결 실패 시 seed-events fallback
-    const { sampleEvents } = await import("@/lib/seed-events");
-    return NextResponse.json(sampleEvents);
+    const { INITIAL_EVENTS } = await import("@/lib/seed-events");
+    return NextResponse.json(INITIAL_EVENTS);
   }
 }

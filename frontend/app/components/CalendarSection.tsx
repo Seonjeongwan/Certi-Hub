@@ -62,10 +62,22 @@ export default function CalendarSection({
           height: "auto",
           eventClick: (info: any) => {
             info.jsEvent.preventDefault();
+
+            // 1순위: cert_id 기반 매칭 (DB에서 관리)
+            const certId = info.event.extendedProps?.cert_id;
+            if (certId) {
+              const cert = certificationsRef.current.find(
+                (c) => c.id === certId
+              );
+              if (cert) {
+                onCertClickRef.current(cert);
+                return;
+              }
+            }
+
+            // 2순위: 이름 기반 매칭 (fallback)
             const title = info.event.title;
             const certName = extractCertName(title);
-
-            // 자격증 매칭 (정확한 이름 → 부분 포함 순서)
             const cert =
               certificationsRef.current.find(
                 (c) => c.name_ko === certName

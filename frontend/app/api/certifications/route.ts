@@ -25,7 +25,12 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Certification API error:", error);
     // 백엔드 연결 실패 시 seed-data fallback
-    const { certifications } = await import("@/lib/seed-data");
-    return NextResponse.json(certifications);
+    const { INITIAL_CERTIFICATIONS } = await import("@/lib/seed-data");
+    return NextResponse.json({
+      items: INITIAL_CERTIFICATIONS,
+      total: INITIAL_CERTIFICATIONS.length,
+      page: 1,
+      size: INITIAL_CERTIFICATIONS.length,
+    });
   }
 }

@@ -61,11 +61,11 @@ export async function getExamSchedules(
 
 export async function getCalendarEvents(
   year: number,
-  month: number
+  month?: number
 ): Promise<CalendarEvent[]> {
-  const { data } = await api.get("/api/schedules/calendar", {
-    params: { year, month },
-  });
+  const params: Record<string, number> = { year };
+  if (month) params.month = month;
+  const { data } = await api.get("/api/schedules/calendar", { params });
   return data;
 }
 

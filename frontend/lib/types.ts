@@ -24,7 +24,7 @@ export interface ExamSchedule {
   result_date?: string; // 합격자 발표일 (ISO date)
 }
 
-// ===== 캘린더 이벤트 타입 (FullCalendar 연동) =====
+// ===== 캘린더 이벤트 타입 (FullCalendar 연동 — 백엔드 API 응답 매핑) =====
 
 export interface CalendarEvent {
   title: string;
@@ -32,10 +32,8 @@ export interface CalendarEvent {
   end?: string;
   color: string;
   textColor?: string;
-  extendedProps?: {
-    type: "registration" | "exam" | "result";
-    cert_id: string;
-  };
+  type?: "registration" | "exam" | "result";
+  cert_id?: string;          // FK → certifications.id (DB에서 관리)
 }
 
 // ===== Tag 스타일 =====

@@ -63,6 +63,9 @@ export default function CertModal({
 
   // ===== 이 자격증의 시험 일정 추출 =====
   const certEvents = events.filter((e) => {
+    // 1순위: cert_id 기반 매칭 (DB에서 가져온 데이터)
+    if (e.cert_id) return e.cert_id === cert.id;
+    // 2순위: 이름 기반 매칭 (fallback seed-data)
     const eventCertName = e.title
       .replace(/\s*(접수|시험|발표)$/, "")
       .replace(/\s*\d+회\s*/, "")
@@ -74,15 +77,9 @@ export default function CertModal({
     );
   });
 
-  const regEvents = certEvents.filter(
-    (e) => e.extendedProps?.type === "registration"
-  );
-  const examEvents = certEvents.filter(
-    (e) => e.extendedProps?.type === "exam"
-  );
-  const resultEvents = certEvents.filter(
-    (e) => e.extendedProps?.type === "result"
-  );
+  const regEvents = certEvents.filter((e) => e.type === "registration");
+  const examEvents = certEvents.filter((e) => e.type === "exam");
+  const resultEvents = certEvents.filter((e) => e.type === "result");
 
   const formatDate = (dateStr: string) => {
     try {
