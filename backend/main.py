@@ -88,6 +88,11 @@ async def trigger_crawl(source: str = "all"):
     """
     크롤러 수동 실행 (관리자용)
     - source: "all" | "qnet" | "kdata" | "cloud"
+
+    3단계 Fallback 전략:
+      1단계: 공식 API (공공데이터포털, 벤더 API)
+      2단계: 웹 크롤링 (HTML 파싱)
+      3단계: 캐시 데이터 (마지막 성공 데이터)
     """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
@@ -111,7 +116,11 @@ async def trigger_crawl(source: str = "all"):
         stats = await loop.run_in_executor(executor, cloud_run)
         results["cloud"] = stats
 
-    return {"status": "completed", "results": results}
+    return {
+        "status": "completed",
+        "strategy": "3-tier fallback (API → Scraping → Cache)",
+        "results": results,
+    }
 
 
 # ===== 실행 =====

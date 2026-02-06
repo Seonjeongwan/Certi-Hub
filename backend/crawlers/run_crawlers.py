@@ -2,6 +2,11 @@
 크롤러 오케스트레이터 (guide.md 4.3 자동 업데이트 파이프라인)
 모든 크롤러를 순서대로 실행하고 결과를 요약합니다.
 
+3단계 Fallback 전략 (각 크롤러 공통):
+  1단계: 공식 API 호출
+  2단계: 웹 크롤링
+  3단계: 캐시 데이터
+
 사용법:
   python -m crawlers.run_crawlers          # 전체 실행
   python -m crawlers.run_crawlers --qnet   # Q-Net만
@@ -24,59 +29,74 @@ logger = logging.getLogger("crawler_runner")
 
 def run_qnet():
     """Q-Net 크롤러 실행"""
-    from crawlers.qnet_scraper import run as qnet_run
+    from crawlers.qnet_scraper import QNetScraper
 
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     logger.info("🕷️  Q-Net 크롤러 시작 (국가기술자격)")
-    logger.info("=" * 50)
+    logger.info("   전략: API(공공데이터포털) → 웹크롤링(q-net.or.kr) → 캐시")
+    logger.info("=" * 60)
     start = time.time()
+    scraper = QNetScraper()
     try:
-        stats = qnet_run()
+        stats = scraper.save_to_db()
         elapsed = time.time() - start
-        logger.info(f"Q-Net 소요시간: {elapsed:.1f}초")
-        return {"name": "Q-Net", "status": "success", "stats": stats, "time": elapsed}
+        method = scraper.method_used
+        logger.info(f"Q-Net 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "Q-Net", "status": "success", "stats": stats, "time": elapsed, "method": method}
     except Exception as e:
         elapsed = time.time() - start
         logger.error(f"Q-Net 크롤러 실패: {e}")
-        return {"name": "Q-Net", "status": "failed", "error": str(e), "time": elapsed}
+        return {"name": "Q-Net", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
 
 
 def run_kdata():
     """KData 크롤러 실행"""
-    from crawlers.kdata_scraper import run as kdata_run
+    from crawlers.kdata_scraper import KDataScraper
 
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     logger.info("🕷️  KData 크롤러 시작 (데이터 자격시험)")
-    logger.info("=" * 50)
+    logger.info("   전략: API(dataq.or.kr) → 웹크롤링 → 캐시")
+    logger.info("=" * 60)
     start = time.time()
+    scraper = KDataScraper()
     try:
-        stats = kdata_run()
+        stats = scraper.save_to_db()
         elapsed = time.time() - start
-        logger.info(f"KData 소요시간: {elapsed:.1f}초")
-        return {"name": "KData", "status": "success", "stats": stats, "time": elapsed}
+        method = scraper.method_used
+        logger.info(f"KData 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "KData", "status": "success", "stats": stats, "time": elapsed, "method": method}
     except Exception as e:
         elapsed = time.time() - start
         logger.error(f"KData 크롤러 실패: {e}")
-        return {"name": "KData", "status": "failed", "error": str(e), "time": elapsed}
+        return {"name": "KData", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
 
 
 def run_cloud():
     """Cloud Vendor 크롤러 실행"""
-    from crawlers.cloud_scraper import run as cloud_run
+    from crawlers.cloud_scraper import CloudScraper
 
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     logger.info("☁️  Cloud Vendor 크롤러 시작 (AWS/GCP/Azure)")
-    logger.info("=" * 50)
+    logger.info("   전략: 벤더API(AWS/Azure) → URL유효성크롤링 → 캐시")
+    logger.info("=" * 60)
     start = time.time()
+    scraper = CloudScraper()
     try:
-        stats = cloud_run()
+        stats = scraper.save_to_db()
         elapsed = time.time() - start
-        logger.info(f"Cloud 소요시간: {elapsed:.1f}초")
-        return {"name": "Cloud", "status": "success", "stats": stats, "time": elapsed}
+        method = scraper.method_used
+        logger.info(f"Cloud 완료: {elapsed:.1f}초, 수집방법: {method}")
+        return {"name": "Cloud", "status": "success", "stats": stats, "time": elapsed, "method": method}
     except Exception as e:
         elapsed = time.time() - start
         logger.error(f"Cloud 크롤러 실패: {e}")
-        return {"name": "Cloud", "status": "failed", "error": str(e), "time": elapsed}
+        return {"name": "Cloud", "status": "failed", "error": str(e), "time": elapsed, "method": "failed"}
+    finally:
+        scraper.close()
 
 
 def print_summary(results):
@@ -90,29 +110,51 @@ def print_summary(results):
     total_updated = 0
     total_skipped = 0
 
+    METHOD_LABELS = {
+        "api": "🟢 공식 API",
+        "scraping": "🟡 웹 크롤링",
+        "cache": "🟠 캐시 데이터",
+        "failed": "🔴 실패",
+        "none": "⚪ 미실행",
+    }
+
     for r in results:
         status_icon = "✅" if r["status"] == "success" else "❌"
-        logger.info(f"  {status_icon} {r['name']}: {r['status']} ({r['time']:.1f}s)")
+        method = r.get("method", "none")
+        method_label = METHOD_LABELS.get(method, method)
+        logger.info(f"  {status_icon} {r['name']}: {r['status']} ({r['time']:.1f}s) — {method_label}")
 
         if r["status"] == "success" and "stats" in r:
             stats = r["stats"]
             inserted = stats.get("inserted", 0)
             updated = stats.get("updated", 0)
             skipped = stats.get("skipped", 0)
+            found = stats.get("found", 0)
             total_inserted += inserted
             total_updated += updated
             total_skipped += skipped
-            logger.info(f"       신규: {inserted}, 업데이트: {updated}, 건너뜀: {skipped}")
+            logger.info(f"       매칭: {found}, 신규: {inserted}, 업데이트: {updated}, 건너뜀: {skipped}")
         elif r["status"] == "failed":
             logger.info(f"       에러: {r.get('error', 'unknown')}")
 
     logger.info("-" * 60)
-    logger.info(f"  총 신규: {total_inserted}, 총 업데이트: {total_updated}, 총 건너뜀: {total_skipped}")
+    logger.info(f"  📈 합계 — 신규: {total_inserted}, 업데이트: {total_updated}, 건너뜀: {total_skipped}")
     logger.info("=" * 60)
+
+    return results
+
+
+def run_all_crawlers() -> list:
+    """
+    모든 크롤러 실행 (FastAPI 엔드포인트용 동기 함수)
+    """
+    results = [run_qnet(), run_kdata(), run_cloud()]
+    print_summary(results)
+    return results
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Certi-Hub 크롤러 실행")
+    parser = argparse.ArgumentParser(description="Certi-Hub 크롤러 실행 (3단계 Fallback)")
     parser.add_argument("--qnet", action="store_true", help="Q-Net 크롤러만 실행")
     parser.add_argument("--kdata", action="store_true", help="KData 크롤러만 실행")
     parser.add_argument("--cloud", action="store_true", help="Cloud 크롤러만 실행")

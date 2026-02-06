@@ -2,34 +2,36 @@
 KData 크롤러 (guide.md 4.3 Scraper Logic #2)
 데이터 자격시험 일정 수집: SQLD, SQLP, ADsP, ADP, DAsP, DAP
 
-대상 사이트: https://www.dataq.or.kr (한국데이터산업진흥원)
-수집 방식: 시험일정 페이지 스크래핑 + 알려진 일정 Fallback
+3단계 Fallback 전략:
+  1단계: dataq.or.kr 시험일정 API/JSON 엔드포인트
+  2단계: dataq.or.kr 웹페이지 크롤링 (HTML 파싱)
+  3단계: 캐시 데이터 (마지막 성공 데이터)
 """
 
-import logging
+import os
+import re
 import httpx
 from bs4 import BeautifulSoup
 from datetime import datetime
-from typing import List, Dict
-from crawlers.base import (
-    get_sync_engine,
-    find_cert_id,
-    find_cert_id_like,
-    upsert_schedule,
-    parse_date,
-)
-from sqlalchemy.orm import Session
+from typing import List, Dict, Optional
 
-logger = logging.getLogger("kdata_scraper")
+from crawlers.base import BaseScraper
 
 
-class KDataScraper:
-    """한국데이터산업진흥원 시험 일정 크롤러"""
+class KDataScraper(BaseScraper):
+    """한국데이터산업진흥원 시험 일정 크롤러 — 3단계 Fallback"""
 
-    BASE_URL = "https://www.dataq.or.kr"
-    SCHEDULE_URL = "https://www.dataq.or.kr/www/sub/a_04.do"
+    source_name = "kdata"
+
+    # dataq.or.kr 시험일정 API (JSON 응답 시도)
+    API_URL = "https://www.dataq.or.kr/www/accept/schedule.do"
+
+    # dataq.or.kr 시험일정 웹페이지
+    WEB_URL = "https://www.dataq.or.kr/www/sub/a_04.do"
 
     def __init__(self):
+        super().__init__()
+        self.year = datetime.now().year
         self.client = httpx.Client(
             timeout=30.0,
             follow_redirects=True,
@@ -41,248 +43,237 @@ class KDataScraper:
                 "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
             },
         )
-        self.year = datetime.now().year
-        self.stats = {"found": 0, "inserted": 0, "updated": 0, "skipped": 0}
 
-    def scrape_schedule_page(self) -> List[Dict]:
-        """
-        KData 시험일정 페이지 크롤링
-        - dataq.or.kr 시험일정 페이지에서 SQLD/SQLP/ADsP/ADP 등 일정 수집
-        """
-        schedules = []
+    # ============================================================
+    # 1단계: dataq.or.kr JSON API 시도
+    # ============================================================
 
+    def try_official_api(self) -> List[Dict]:
+        """
+        dataq.or.kr의 시험일정 API 엔드포인트 호출
+        - 일부 페이지가 AJAX 요청으로 JSON 데이터를 반환하는 경우 활용
+        - 실패 시 빈 리스트 반환 → 2단계로
+        """
         try:
-            logger.info(f"KData 시험일정 페이지 크롤링 시작 (year={self.year})")
-            response = self.client.get(self.SCHEDULE_URL)
+            # dataq.or.kr AJAX 엔드포인트로 JSON 시도
+            response = self.client.post(
+                self.API_URL,
+                data={"year": str(self.year)},
+                headers={
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            )
             response.raise_for_status()
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            # JSON 파싱 시도
+            try:
+                data = response.json()
+            except Exception:
+                self.logger.info("API 응답이 JSON이 아님 → HTML일 수 있음")
+                # HTML 응답이면 직접 파싱
+                return self._parse_html_schedules(response.text)
 
-            # dataq.or.kr 시험일정 테이블 파싱
-            tables = soup.select("table.table, table.tbl_type, table")
-            for table in tables:
-                caption = table.select_one("caption")
-                if caption and str(self.year) in caption.get_text():
-                    rows = table.select("tbody tr")
-                    for row in rows:
-                        cols = row.select("td")
-                        schedule = self._parse_row(cols)
-                        if schedule:
-                            schedules.append(schedule)
+            if isinstance(data, list):
+                schedules = []
+                for item in data:
+                    sch = self._parse_api_item(item)
+                    if sch:
+                        schedules.append(sch)
+                return schedules
+            elif isinstance(data, dict):
+                items = data.get("data", data.get("list", data.get("items", [])))
+                if items:
+                    return [s for s in (self._parse_api_item(i) for i in items) if s]
 
-            if schedules:
-                logger.info(f"KData 페이지에서 {len(schedules)}건 추출")
-            else:
-                logger.info("KData 페이지에서 일정을 추출하지 못함 → 저장된 데이터 사용")
-                schedules = self._get_known_schedules()
+            return []
 
         except httpx.HTTPStatusError as e:
-            logger.warning(f"KData HTTP 에러: {e.response.status_code}")
-            schedules = self._get_known_schedules()
+            self.logger.warning(f"KData API HTTP 에러: {e.response.status_code}")
+            return []
         except httpx.ConnectError:
-            logger.warning("KData 연결 실패 → 저장된 일정 데이터 사용")
-            schedules = self._get_known_schedules()
+            self.logger.warning("KData API 연결 실패")
+            return []
         except Exception as e:
-            logger.error(f"KData 크롤링 에러: {e}")
-            schedules = self._get_known_schedules()
+            self.logger.warning(f"KData API 에러: {e}")
+            return []
 
-        return schedules
-
-    def _parse_row(self, cols) -> Dict | None:
-        """테이블 행에서 일정 정보 추출"""
+    def _parse_api_item(self, item: Dict) -> Optional[Dict]:
+        """API JSON 응답 항목 파싱"""
         try:
-            texts = [c.get_text(strip=True) for c in cols]
-            if len(texts) < 5:
+            cert_name = (
+                item.get("examNm", "")
+                or item.get("jmNm", "")
+                or item.get("certName", "")
+            ).strip()
+            if not cert_name:
                 return None
 
-            # 일반적 구조: [회차, 자격종목, 접수기간, 시험일, 합격발표]
+            cert_name = self._normalize_cert_name(cert_name)
+
             return {
-                "cert_name": texts[1],
-                "round": self._extract_round(texts[0]),
-                "reg_start": texts[2].split("~")[0].strip() if "~" in texts[2] else texts[2],
-                "reg_end": texts[2].split("~")[1].strip() if "~" in texts[2] else texts[2],
-                "exam_date": texts[3],
-                "result_date": texts[4],
+                "cert_name": cert_name,
+                "round": int(item.get("implSeq", item.get("round", item.get("seq", 1)))),
+                "reg_start": item.get("receiptStartDt", item.get("regStart", "")),
+                "reg_end": item.get("receiptEndDt", item.get("regEnd", "")),
+                "exam_date": item.get("examDt", item.get("examDate", "")),
+                "result_date": item.get("resultDt", item.get("resultDate", "")),
             }
         except Exception:
             return None
 
-    def _extract_round(self, text: str) -> int:
-        """회차 번호 추출"""
-        import re
+    # ============================================================
+    # 2단계: dataq.or.kr 웹 크롤링
+    # ============================================================
 
-        match = re.search(r"(\d+)", text)
-        return int(match.group(1)) if match else 1
+    def try_web_scraping(self) -> List[Dict]:
+        """
+        dataq.or.kr 시험일정 웹페이지 크롤링
+        - HTML 테이블에서 SQLD/SQLP/ADsP/ADP 등 일정 파싱
+        - 페이지 구조 변경 시 파싱 실패 가능 → known 데이터로 보완
+        """
+        try:
+            response = self.client.get(self.WEB_URL)
+            response.raise_for_status()
+
+            schedules = self._parse_html_schedules(response.text)
+
+            if schedules:
+                return schedules
+
+            # 크롤링은 됐지만 파싱 실패 → known 데이터
+            self.logger.info("웹 크롤링 성공, 파싱 실패 → known 일정 사용")
+            return self._get_known_schedules()
+
+        except httpx.HTTPStatusError as e:
+            self.logger.warning(f"KData 웹 HTTP 에러: {e.response.status_code}")
+            return self._get_known_schedules()
+        except httpx.ConnectError:
+            self.logger.warning("KData 웹 연결 실패")
+            return self._get_known_schedules()
+        except Exception as e:
+            self.logger.warning(f"KData 웹 크롤링 에러: {e}")
+            return self._get_known_schedules()
+
+    def _parse_html_schedules(self, html: str) -> List[Dict]:
+        """HTML에서 시험 일정 테이블 파싱"""
+        soup = BeautifulSoup(html, "html.parser")
+        schedules = []
+
+        tables = soup.select("table.table, table.tbl_type, table")
+        for table in tables:
+            # 연도가 포함된 캡션/제목이 있는 테이블만
+            caption = table.select_one("caption, thead th")
+            table_text = table.get_text()
+
+            if str(self.year) not in table_text and not caption:
+                continue
+
+            rows = table.select("tbody tr")
+            for row in rows:
+                cols = row.select("td")
+                sch = self._parse_table_row(cols)
+                if sch:
+                    schedules.append(sch)
+
+        return schedules
+
+    def _parse_table_row(self, cols) -> Optional[Dict]:
+        """테이블 행에서 일정 정보 추출"""
+        try:
+            texts = [c.get_text(strip=True) for c in cols]
+            if len(texts) < 4:
+                return None
+
+            # 일반적 구조: [회차, 자격종목, 접수기간, 시험일, 합격발표]
+            # 또는: [자격종목, 회차, 접수기간, 시험일, 합격발표]
+            cert_name = ""
+            round_no = 1
+
+            for t in texts[:2]:
+                if any(kw in t for kw in ["SQL", "AD", "DA", "빅데이터"]):
+                    cert_name = self._normalize_cert_name(t)
+                elif re.search(r"\d+", t):
+                    match = re.search(r"(\d+)", t)
+                    if match:
+                        round_no = int(match.group(1))
+
+            if not cert_name:
+                return None
+
+            # 접수기간 (~ 구분)
+            reg_text = texts[2] if len(texts) > 2 else ""
+            if "~" in reg_text:
+                parts = reg_text.split("~")
+                reg_start = parts[0].strip()
+                reg_end = parts[1].strip()
+            else:
+                reg_start = reg_end = reg_text
+
+            return {
+                "cert_name": cert_name,
+                "round": round_no,
+                "reg_start": reg_start,
+                "reg_end": reg_end,
+                "exam_date": texts[3] if len(texts) > 3 else "",
+                "result_date": texts[4] if len(texts) > 4 else "",
+            }
+        except Exception:
+            return None
+
+    def _normalize_cert_name(self, name: str) -> str:
+        """API/크롤링에서 받은 이름을 DB name_ko와 매칭"""
+        name = name.strip()
+        name_map = {
+            "SQLD": "SQLD (SQL개발자)",
+            "SQL개발자": "SQLD (SQL개발자)",
+            "SQL 개발자": "SQLD (SQL개발자)",
+            "SQLP": "SQLP (SQL전문가)",
+            "SQL전문가": "SQLP (SQL전문가)",
+            "SQL 전문가": "SQLP (SQL전문가)",
+            "ADsP": "ADsP (데이터분석 준전문가)",
+            "데이터분석준전문가": "ADsP (데이터분석 준전문가)",
+            "데이터분석 준전문가": "ADsP (데이터분석 준전문가)",
+            "ADP": "ADP (데이터분석 전문가)",
+            "데이터분석전문가": "ADP (데이터분석 전문가)",
+            "데이터분석 전문가": "ADP (데이터분석 전문가)",
+            "DAsP": "DAsP (데이터아키텍처 준전문가)",
+            "데이터아키텍처준전문가": "DAsP (데이터아키텍처 준전문가)",
+            "데이터아키텍처 준전문가": "DAsP (데이터아키텍처 준전문가)",
+            "DAP": "DAP (데이터아키텍처 전문가)",
+            "데이터아키텍처전문가": "DAP (데이터아키텍처 전문가)",
+            "데이터아키텍처 전문가": "DAP (데이터아키텍처 전문가)",
+        }
+        return name_map.get(name, name)
 
     def _get_known_schedules(self) -> List[Dict]:
         """
-        KData 크롤링 실패 시 사용할 2026년 데이터 자격시험 일정
+        크롤링 파싱 실패 시 사용할 2026년 데이터 자격시험 일정
         출처: dataq.or.kr 공지사항 기반
         """
-        logger.info("KData 저장된 2026년 일정 데이터 사용")
-
+        self.logger.info("📋 KData 2026년 known 일정 데이터 사용")
         return [
-            # ===== SQLD (SQL개발자) =====
-            {
-                "cert_name": "SQLD (SQL개발자)",
-                "round": 54,
-                "reg_start": "2026-01-19",
-                "reg_end": "2026-01-30",
-                "exam_date": "2026-02-28",
-                "result_date": "2026-03-20",
-            },
-            {
-                "cert_name": "SQLD (SQL개발자)",
-                "round": 55,
-                "reg_start": "2026-04-27",
-                "reg_end": "2026-05-08",
-                "exam_date": "2026-05-30",
-                "result_date": "2026-06-19",
-            },
-            {
-                "cert_name": "SQLD (SQL개발자)",
-                "round": 56,
-                "reg_start": "2026-08-17",
-                "reg_end": "2026-08-28",
-                "exam_date": "2026-09-20",
-                "result_date": "2026-10-16",
-            },
-            {
-                "cert_name": "SQLD (SQL개발자)",
-                "round": 57,
-                "reg_start": "2026-10-19",
-                "reg_end": "2026-10-30",
-                "exam_date": "2026-11-21",
-                "result_date": "2026-12-11",
-            },
-            # ===== SQLP (SQL전문가) =====
-            {
-                "cert_name": "SQLP (SQL전문가)",
-                "round": 44,
-                "reg_start": "2026-04-27",
-                "reg_end": "2026-05-08",
-                "exam_date": "2026-05-30",
-                "result_date": "2026-06-19",
-            },
-            {
-                "cert_name": "SQLP (SQL전문가)",
-                "round": 45,
-                "reg_start": "2026-10-19",
-                "reg_end": "2026-10-30",
-                "exam_date": "2026-11-21",
-                "result_date": "2026-12-11",
-            },
-            # ===== ADsP (데이터분석 준전문가) =====
-            {
-                "cert_name": "ADsP (데이터분석 준전문가)",
-                "round": 44,
-                "reg_start": "2026-01-19",
-                "reg_end": "2026-01-30",
-                "exam_date": "2026-02-28",
-                "result_date": "2026-03-20",
-            },
-            {
-                "cert_name": "ADsP (데이터분석 준전문가)",
-                "round": 45,
-                "reg_start": "2026-04-27",
-                "reg_end": "2026-05-08",
-                "exam_date": "2026-05-30",
-                "result_date": "2026-06-19",
-            },
-            {
-                "cert_name": "ADsP (데이터분석 준전문가)",
-                "round": 46,
-                "reg_start": "2026-08-17",
-                "reg_end": "2026-08-28",
-                "exam_date": "2026-09-20",
-                "result_date": "2026-10-16",
-            },
-            {
-                "cert_name": "ADsP (데이터분석 준전문가)",
-                "round": 47,
-                "reg_start": "2026-10-19",
-                "reg_end": "2026-10-30",
-                "exam_date": "2026-11-21",
-                "result_date": "2026-12-11",
-            },
-            # ===== ADP (데이터분석 전문가) =====
-            {
-                "cert_name": "ADP (데이터분석 전문가)",
-                "round": 34,
-                "reg_start": "2026-04-27",
-                "reg_end": "2026-05-08",
-                "exam_date": "2026-05-30",
-                "result_date": "2026-06-19",
-            },
-            {
-                "cert_name": "ADP (데이터분석 전문가)",
-                "round": 35,
-                "reg_start": "2026-10-19",
-                "reg_end": "2026-10-30",
-                "exam_date": "2026-11-21",
-                "result_date": "2026-12-11",
-            },
-            # ===== DAsP (데이터아키텍처 준전문가) =====
-            {
-                "cert_name": "DAsP (데이터아키텍처 준전문가)",
-                "round": 28,
-                "reg_start": "2026-04-27",
-                "reg_end": "2026-05-08",
-                "exam_date": "2026-05-30",
-                "result_date": "2026-06-19",
-            },
-            # ===== DAP (데이터아키텍처 전문가) =====
-            {
-                "cert_name": "DAP (데이터아키텍처 전문가)",
-                "round": 27,
-                "reg_start": "2026-10-19",
-                "reg_end": "2026-10-30",
-                "exam_date": "2026-11-21",
-                "result_date": "2026-12-11",
-            },
+            # === SQLD (4회) ===
+            {"cert_name": "SQLD (SQL개발자)", "round": 54, "reg_start": "2026-01-19", "reg_end": "2026-01-30", "exam_date": "2026-02-28", "result_date": "2026-03-20"},
+            {"cert_name": "SQLD (SQL개발자)", "round": 55, "reg_start": "2026-04-27", "reg_end": "2026-05-08", "exam_date": "2026-05-30", "result_date": "2026-06-19"},
+            {"cert_name": "SQLD (SQL개발자)", "round": 56, "reg_start": "2026-08-17", "reg_end": "2026-08-28", "exam_date": "2026-09-20", "result_date": "2026-10-16"},
+            {"cert_name": "SQLD (SQL개발자)", "round": 57, "reg_start": "2026-10-19", "reg_end": "2026-10-30", "exam_date": "2026-11-21", "result_date": "2026-12-11"},
+            # === SQLP (2회) ===
+            {"cert_name": "SQLP (SQL전문가)", "round": 44, "reg_start": "2026-04-27", "reg_end": "2026-05-08", "exam_date": "2026-05-30", "result_date": "2026-06-19"},
+            {"cert_name": "SQLP (SQL전문가)", "round": 45, "reg_start": "2026-10-19", "reg_end": "2026-10-30", "exam_date": "2026-11-21", "result_date": "2026-12-11"},
+            # === ADsP (4회) ===
+            {"cert_name": "ADsP (데이터분석 준전문가)", "round": 44, "reg_start": "2026-01-19", "reg_end": "2026-01-30", "exam_date": "2026-02-28", "result_date": "2026-03-20"},
+            {"cert_name": "ADsP (데이터분석 준전문가)", "round": 45, "reg_start": "2026-04-27", "reg_end": "2026-05-08", "exam_date": "2026-05-30", "result_date": "2026-06-19"},
+            {"cert_name": "ADsP (데이터분석 준전문가)", "round": 46, "reg_start": "2026-08-17", "reg_end": "2026-08-28", "exam_date": "2026-09-20", "result_date": "2026-10-16"},
+            {"cert_name": "ADsP (데이터분석 준전문가)", "round": 47, "reg_start": "2026-10-19", "reg_end": "2026-10-30", "exam_date": "2026-11-21", "result_date": "2026-12-11"},
+            # === ADP (2회) ===
+            {"cert_name": "ADP (데이터분석 전문가)", "round": 34, "reg_start": "2026-04-27", "reg_end": "2026-05-08", "exam_date": "2026-05-30", "result_date": "2026-06-19"},
+            {"cert_name": "ADP (데이터분석 전문가)", "round": 35, "reg_start": "2026-10-19", "reg_end": "2026-10-30", "exam_date": "2026-11-21", "result_date": "2026-12-11"},
+            # === DAsP ===
+            {"cert_name": "DAsP (데이터아키텍처 준전문가)", "round": 28, "reg_start": "2026-04-27", "reg_end": "2026-05-08", "exam_date": "2026-05-30", "result_date": "2026-06-19"},
+            # === DAP ===
+            {"cert_name": "DAP (데이터아키텍처 전문가)", "round": 27, "reg_start": "2026-10-19", "reg_end": "2026-10-30", "exam_date": "2026-11-21", "result_date": "2026-12-11"},
         ]
-
-    def save_to_db(self):
-        """크롤링 결과를 DB에 저장"""
-        engine = get_sync_engine()
-        schedules = self.scrape_schedule_page()
-
-        with Session(engine) as session:
-            for sch in schedules:
-                cert_name = sch.get("cert_name", "")
-                if not cert_name:
-                    continue
-
-                cert_id = find_cert_id(session, cert_name)
-                if not cert_id:
-                    cert_id = find_cert_id_like(session, cert_name)
-
-                if not cert_id:
-                    logger.warning(f"DB에서 '{cert_name}' 자격증을 찾을 수 없음 → 건너뜀")
-                    self.stats["skipped"] += 1
-                    continue
-
-                self.stats["found"] += 1
-                result = upsert_schedule(
-                    session=session,
-                    cert_id=cert_id,
-                    round_no=sch.get("round", 1),
-                    reg_start=parse_date(sch.get("reg_start", "")),
-                    reg_end=parse_date(sch.get("reg_end", "")),
-                    exam_date=parse_date(sch.get("exam_date", "")),
-                    result_date=parse_date(sch.get("result_date", "")),
-                )
-                self.stats[result] = self.stats.get(result, 0) + 1
-
-            session.commit()
-
-        logger.info(
-            f"KData 완료: 매칭 {self.stats['found']}건, "
-            f"신규 {self.stats['inserted']}건, "
-            f"업데이트 {self.stats['updated']}건, "
-            f"건너뜀 {self.stats['skipped']}건"
-        )
-        return self.stats
 
     def close(self):
         self.client.close()
