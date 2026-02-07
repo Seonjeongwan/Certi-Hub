@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Certification, CalendarEvent } from "@/lib/types";
 import Header from "./components/Header";
 import Hero from "./components/Hero";
 import PopularGrid from "./components/PopularGrid";
+import StickyTagBar from "./components/StickyTagBar";
 import RoadmapSection from "./components/RoadmapSection";
 import CertList from "./components/CertList";
 import CalendarSection from "./components/CalendarSection";
@@ -25,6 +26,7 @@ export default function HomePage() {
   const [selectedCert, setSelectedCert] = useState<Certification | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTag, setActiveTag] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,17 +83,27 @@ export default function HomePage() {
     loadData();
   }, []);
 
-  const handleSearch = (query: string) => {
-    const q = query.toLowerCase();
-    document.querySelectorAll("[data-cert-card]").forEach((card) => {
-      const text = card.textContent?.toLowerCase() || "";
-      (card as HTMLElement).style.display = text.includes(q) ? "" : "none";
-    });
-  };
+  // React 상태 기반 검색 (DOM 조작 제거)
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
 
-  const handleTagClick = (tag: string) => {
+  // 검색어로 필터링된 자격증 목록 (메모이제이션)
+  const filteredCertifications = useMemo(() => {
+    if (!searchQuery) return certifications;
+    const q = searchQuery.toLowerCase();
+    return certifications.filter(
+      (c) =>
+        c.name_ko.toLowerCase().includes(q) ||
+        c.name_en.toLowerCase().includes(q) ||
+        c.tag.toLowerCase().includes(q) ||
+        c.sub_tag.toLowerCase().includes(q)
+    );
+  }, [certifications, searchQuery]);
+
+  const handleTagClick = useCallback((tag: string) => {
     document.getElementById("roadmap")?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   return (
     <ErrorBoundary>
@@ -121,10 +133,18 @@ export default function HomePage() {
             totalCerts={certifications.length}
             onSelectCert={setSelectedCert}
           />
-          <PopularGrid certifications={certifications} onTagClick={(tag) => { setActiveTag(tag); handleTagClick(tag); }} />
+          <PopularGrid certifications={filteredCertifications} onTagClick={(tag) => { setActiveTag(tag); handleTagClick(tag); }} />
+
+          {/* 카테고리 필터 — 스크롤 시 상단 고정 */}
+          <StickyTagBar
+            certifications={certifications}
+            activeTag={activeTag}
+            onTagChange={setActiveTag}
+          />
+
           <ErrorBoundary>
             <RoadmapSection
-              certifications={certifications}
+              certifications={filteredCertifications}
               onCertClick={setSelectedCert}
               activeTag={activeTag}
               onTagChange={setActiveTag}
@@ -132,7 +152,7 @@ export default function HomePage() {
           </ErrorBoundary>
           <ErrorBoundary>
             <CertList
-              certifications={certifications}
+              certifications={filteredCertifications}
               onCertClick={setSelectedCert}
               activeTag={activeTag}
             />
@@ -140,7 +160,7 @@ export default function HomePage() {
           <ErrorBoundary>
             <CalendarSection
               events={events}
-              certifications={certifications}
+              certifications={filteredCertifications}
               onCertClick={setSelectedCert}
               activeTag={activeTag}
             />

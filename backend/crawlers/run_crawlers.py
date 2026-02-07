@@ -24,11 +24,14 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
 logger = logging.getLogger("crawler_runner")
+
+# CLI 직접 실행 시에만 basicConfig 적용 (FastAPI 앱 내에서는 logging_config.py가 관리)
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
 
 
 def run_qnet():

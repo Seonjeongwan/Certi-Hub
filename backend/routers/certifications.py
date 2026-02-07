@@ -27,7 +27,7 @@ async def list_certifications(
     tag: Optional[str] = Query(None, description="대분류 필터"),
     sub_tag: Optional[str] = Query(None, description="소분류 필터"),
     level: Optional[CertLevel] = Query(None, description="레벨 필터"),
-    query: Optional[str] = Query(None, description="검색어"),
+    query: Optional[str] = Query(None, max_length=100, description="검색어"),
     page: int = Query(1, ge=1),
     size: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -72,7 +72,7 @@ async def list_certifications(
 
 @router.get("/search", response_model=list[CertificationResponse])
 async def search_certifications(
-    q: str = Query(..., min_length=1, description="검색어 (자동완성용)"),
+    q: str = Query(..., min_length=1, max_length=100, description="검색어 (자동완성용)"),
     db: AsyncSession = Depends(get_db),
 ):
     """

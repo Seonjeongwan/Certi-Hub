@@ -8,7 +8,7 @@ APScheduler 기반 정기 크롤링 스케줄러
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -29,7 +29,6 @@ async def run_crawl_job(source: str = "all"):
     """
     import asyncio
     import time
-    from concurrent.futures import ThreadPoolExecutor
 
     from sqlalchemy.orm import Session
     from crawlers.base import get_sync_engine
@@ -50,8 +49,7 @@ async def run_crawl_job(source: str = "all"):
     sources_to_run = list(crawler_map.keys()) if source == "all" else [source]
     results = []
 
-    loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=1)
+    loop = asyncio.get_running_loop()
 
     for src in sources_to_run:
         if src not in crawler_map:
@@ -61,7 +59,7 @@ async def run_crawl_job(source: str = "all"):
 
         # CrawlLog 시작 기록
         with Session(engine) as session:
-            log = CrawlLog(source=src, status="running", started_at=datetime.utcnow())
+            log = CrawlLog(source=src, status="running", started_at=datetime.now(timezone.utc))
             session.add(log)
             session.commit()
             log_id = log.id
@@ -82,7 +80,7 @@ async def run_crawl_job(source: str = "all"):
                 finally:
                     scraper.close()
 
-            result = await loop.run_in_executor(executor, _run_scraper)
+            result = await loop.run_in_executor(None, _run_scraper)
             elapsed = time.time() - start_time
 
             # CrawlLog 성공 기록
@@ -96,7 +94,7 @@ async def run_crawl_job(source: str = "all"):
                     log.updated = result["stats"].get("updated", 0)
                     log.skipped = result["stats"].get("skipped", 0)
                     log.duration_sec = round(elapsed, 2)
-                    log.finished_at = datetime.utcnow()
+                    log.finished_at = datetime.now(timezone.utc)
                     log.detail = result["stats"]
                     session.commit()
 
@@ -121,7 +119,7 @@ async def run_crawl_job(source: str = "all"):
                     log.status = "failed"
                     log.error_message = error_msg[:1000]
                     log.duration_sec = round(elapsed, 2)
-                    log.finished_at = datetime.utcnow()
+                    log.finished_at = datetime.now(timezone.utc)
                     session.commit()
 
             results.append({

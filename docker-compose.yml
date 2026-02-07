@@ -46,7 +46,7 @@ services:
       DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/certihub
       FRONTEND_URL: http://localhost:3000
       FRONTEND_SEED_PATH: /frontend-lib/seed-events.ts
-      DEBUG: ${DEBUG:-true}
+      DEBUG: ${DEBUG:-false}
       CACHE_DIR: /app/cache
       DATA_GO_KR_API_KEY: ${DATA_GO_KR_API_KEY:-}
     ports:
@@ -59,6 +59,12 @@ services:
       - crawler_cache:/app/cache
       - ./frontend/lib:/frontend-lib    # seed-events.ts 동기화용
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
     restart: unless-stopped
 
   # ===== Next.js 프론트엔드 =====
@@ -73,7 +79,8 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - ./frontend:/app
       - /app/node_modules

@@ -16,7 +16,6 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
   const [activeLevel, setActiveLevel] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
 
-  const tags = Object.keys(TAG_STYLES);
   const levels: CertLevel[] = ["Basic", "Intermediate", "Advanced", "Master"];
 
   // 필터링된 데이터
@@ -79,38 +78,27 @@ export default function RoadmapSection({ certifications, onCertClick, activeTag,
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-6 sm:mb-8 p-1 -mx-1 sm:mx-0 overflow-x-auto scrollbar-hide">
-        <button
-          onClick={() => onTagChange("all")}
-          className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border-[1.5px] text-xs sm:text-sm font-semibold cursor-pointer transition-all flex items-center gap-1 sm:gap-1.5 shrink-0 ${
-            activeTag === "all"
-              ? "bg-primary text-white border-primary"
-              : "bg-white text-[#616568] border-[#e9ecef] hover:border-primary hover:text-primary"
-          }`}
-        >
-          전체 <span className={`text-[11px] px-1.5 rounded-[10px] font-bold ${activeTag === "all" ? "bg-white/25" : "bg-black/[0.08]"}`}>{certifications.length}</span>
-        </button>
-        {tags.map((tag) => {
-          const count = certifications.filter((c) => c.tag === tag).length;
-          return (
-            <button
-              key={tag}
-              onClick={() => onTagChange(tag)}
-              className={`px-3 sm:px-5 py-1.5 sm:py-2 rounded-full border-[1.5px] text-xs sm:text-sm font-semibold cursor-pointer transition-all flex items-center gap-1 sm:gap-1.5 shrink-0 ${
-                activeTag === tag
-                  ? "bg-primary text-white border-primary"
-                  : "bg-white text-[#616568] border-[#e9ecef] hover:border-primary hover:text-primary"
-              }`}
-            >
-              {tag}{" "}
-              <span className={`text-[11px] px-1.5 rounded-[10px] font-bold ${activeTag === tag ? "bg-white/25" : "bg-black/[0.08]"}`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* 카테고리 탭은 StickyTagBar로 이동 — 여기서는 현재 선택된 태그만 표시 */}
+      {activeTag !== "all" && (
+        <div className="mb-4 sm:mb-6 flex items-center gap-2">
+          <span className="text-sm text-[#858a8d]">현재 필터:</span>
+          <span
+            className="px-3 py-1 rounded-full text-xs font-bold text-white"
+            style={{
+              background: TAG_STYLES[activeTag]?.color || "#374151",
+            }}
+          >
+            {activeTag}
+          </span>
+          <button
+            onClick={() => onTagChange("all")}
+            className="text-xs text-[#858a8d] hover:text-primary transition-colors ml-1"
+          >
+            <i className="fas fa-xmark mr-0.5" />
+            초기화
+          </button>
+        </div>
+      )}
 
       {/* Table View */}
       {viewMode === "table" && (

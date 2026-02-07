@@ -12,10 +12,13 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // 기본 1초, 지수 백오프 적용
 const RETRYABLE_STATUS = [408, 429, 500, 502, 503, 504];
 
-// ===== Axios 인스턴스 (FastAPI 백엔드 연결) =====
-
+// ===== Axios 인스턴스 =====
+// 클라이언트에서는 상대 경로 사용 → Next.js Route Handler/Rewrite를 통해 백엔드 연결
+// 서버사이드에서는 NEXT_PUBLIC_API_URL 사용
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  baseURL: typeof window === "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
+    : "",  // 브라우저에서는 상대 경로 (Next.js proxy 경유)
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
 });

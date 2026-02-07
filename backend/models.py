@@ -7,7 +7,7 @@ SQLAlchemy ORM 모델 (guide.md 3절 ERD 매핑)
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import (
     Column,
     String,
@@ -43,8 +43,8 @@ class Certification(Base):
         comment="레벨: 초급/중급/상급/고급",
     )
     official_url = Column(Text, nullable=True, comment="공식 접수 페이지 주소")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship
     schedules = relationship("ExamSchedule", back_populates="certification", cascade="all, delete-orphan")
@@ -79,8 +79,8 @@ class ExamSchedule(Base):
     reg_end = Column(DateTime, nullable=True, comment="원서 접수 마감일")
     exam_date = Column(Date, nullable=True, comment="시험 시행일")
     result_date = Column(Date, nullable=True, comment="합격자 발표일")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship
     certification = relationship("Certification", back_populates="schedules")
@@ -119,9 +119,9 @@ class CrawlLog(Base):
     duration_sec = Column(Float, nullable=True, comment="실행 소요 시간(초)")
     error_message = Column(Text, nullable=True, comment="실패 시 에러 메시지")
     detail = Column(JSONB, nullable=True, comment="상세 결과 JSON")
-    started_at = Column(DateTime, default=datetime.utcnow, comment="시작 시각")
-    finished_at = Column(DateTime, nullable=True, comment="완료 시각")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="시작 시각")
+    finished_at = Column(DateTime(timezone=True), nullable=True, comment="완료 시각")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_crawl_source", "source"),

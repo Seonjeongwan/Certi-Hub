@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # ===== App =====
     APP_NAME: str = "Certi-Hub API"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False  # 프로덕션 기본값: False (개발 시 .env에서 DEBUG=true 설정)
 
     # ===== Database (PostgreSQL / Supabase) =====
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/certihub"

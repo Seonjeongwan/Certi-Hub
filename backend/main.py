@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from database import init_db
+from database import init_db, async_session
 from logging_config import setup_logging
 from middleware import RequestLoggingMiddleware
 from routers import certifications, schedules
@@ -103,31 +103,33 @@ app.include_router(crawl_router)
 @app.get("/api/health")
 async def health_check():
     """헬스체크 — 서비스 상태 + DB 연결 확인"""
-    from database import async_session
     from sqlalchemy import text
 
     db_ok = False
+    db_error = None
     try:
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
             db_ok = True
-    except Exception:
-        pass
+    except Exception as e:
+        db_error = str(e) if settings.DEBUG else None
 
     status = "ok" if db_ok else "degraded"
-    return {
+    result = {
         "status": status,
         "service": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "database": "connected" if db_ok else "disconnected",
     }
+    if db_error:
+        result["db_error"] = db_error
+    return result
 
 
 @app.get("/api/stats")
 async def get_stats():
     """통계 정보 (프론트엔드 히어로 섹션용)"""
     from sqlalchemy import select, func
-    from database import async_session
     from models import Certification, ExamSchedule
 
     async with async_session() as db:

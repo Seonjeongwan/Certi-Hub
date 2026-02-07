@@ -6,7 +6,6 @@
 - seed-events.ts 동기화
 """
 
-import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,17 +36,37 @@ async def get_crawl_status(db: AsyncSession = Depends(get_db)):
     last_result = await db.execute(last_stmt)
     last_log = last_result.scalar_one_or_none()
 
-    # 소스별 마지막 성공 정보
-    sources = {}
-    for source_name in ["qnet", "kdata", "cloud", "finance", "it_domestic", "intl"]:
-        src_stmt = (
-            select(CrawlLog)
-            .where(CrawlLog.source == source_name, CrawlLog.status == "success")
-            .order_by(desc(CrawlLog.finished_at))
-            .limit(1)
+    # 소스별 마지막 성공 정보 — 단일 쿼리로 N+1 문제 해결
+    from sqlalchemy import and_
+    all_source_names = ["qnet", "kdata", "cloud", "finance", "it_domestic", "intl"]
+
+    # 서브쿼리: 소스별 최신 성공 로그 ID
+    latest_success_subq = (
+        select(
+            CrawlLog.source,
+            func.max(CrawlLog.finished_at).label("max_finished")
         )
-        src_result = await db.execute(src_stmt)
-        src_log = src_result.scalar_one_or_none()
+        .where(CrawlLog.status == "success", CrawlLog.source.in_(all_source_names))
+        .group_by(CrawlLog.source)
+        .subquery()
+    )
+
+    src_stmt = (
+        select(CrawlLog)
+        .join(
+            latest_success_subq,
+            and_(
+                CrawlLog.source == latest_success_subq.c.source,
+                CrawlLog.finished_at == latest_success_subq.c.max_finished,
+            )
+        )
+    )
+    src_result = await db.execute(src_stmt)
+    src_logs = {log.source: log for log in src_result.scalars().all()}
+
+    sources = {}
+    for source_name in all_source_names:
+        src_log = src_logs.get(source_name)
         if src_log:
             sources[source_name] = {
                 "last_success": src_log.finished_at.isoformat() if src_log.finished_at else None,
@@ -135,16 +154,14 @@ async def sync_seed_events():
     크롤링 없이 현재 DB 데이터로 seed-events.ts를 갱신합니다.
     """
     import asyncio
-    from concurrent.futures import ThreadPoolExecutor
 
-    loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=1)
+    loop = asyncio.get_running_loop()
 
     def _sync():
         from services.seed_sync import sync_seed_events as do_sync
         return do_sync()
 
-    result = await loop.run_in_executor(executor, _sync)
+    result = await loop.run_in_executor(None, _sync)
 
     return SeedSyncResponse(
         status=result["status"],

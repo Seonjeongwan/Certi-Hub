@@ -13,16 +13,14 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime, date
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Dict, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
+logger = logging.getLogger("crawlers.base")
 
 # 캐시 디렉토리
 CACHE_DIR = Path(os.getenv("CACHE_DIR", "/app/cache"))
@@ -32,13 +30,21 @@ CACHE_DIR = Path(os.getenv("CACHE_DIR", "/app/cache"))
 # DB 헬퍼
 # ============================================================
 
+@lru_cache(maxsize=1)
 def get_sync_engine():
-    """동기 DB 엔진 (크롤러용)"""
+    """동기 DB 엔진 (크롤러용) — 싱글턴 캐시"""
     url = os.getenv(
         "DATABASE_URL_SYNC",
         "postgresql+psycopg2://postgres:postgres@localhost:5432/certihub",
     )
-    return create_engine(url, echo=False)
+    return create_engine(
+        url,
+        echo=False,
+        pool_size=5,
+        max_overflow=3,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+    )
 
 
 def find_cert_id(session: Session, name_ko: str) -> Optional[str]:

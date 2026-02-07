@@ -13,8 +13,10 @@ settings = get_settings()
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=10,           # 적정 풀 사이즈 (기본 5 → 10)
+    max_overflow=5,         # 피크 시 최대 15 연결
+    pool_recycle=1800,      # 30분마다 커넥션 재생성 (DB timeout 방지)
+    pool_pre_ping=True,     # 쿼리 전 커넥션 유효성 검사 (stale connection 방지)
 )
 
 # ===== Session Factory =====
@@ -40,8 +42,7 @@ async def get_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
+        # async with이 자동으로 close 처리하므로 finally 불필요
 
 
 # ===== DB 초기화 =====
