@@ -1,33 +1,44 @@
 # =====================================================
 # Certi-Hub Production Docker Compose
-# 프로덕션 환경 배포용 (Nginx + 멀티스테이지 빌드)
+# 프로덕션 환경 배포용 (Nginx + SSL + 멀티스테이지 빌드)
 #
 # 사용법:
 #   docker compose -f docker-compose.prod.yml up -d --build
 #   docker compose -f docker-compose.prod.yml logs -f
 #   docker compose -f docker-compose.prod.yml down
+#
+# SSL 인증서 발급 (최초 1회):
+#   sudo certbot certonly --standalone -d yourdomain.kr
+#   그 후 nginx/nginx.ssl.conf의 server_name과 인증서 경로 수정
 # =====================================================
 
 services:
-  # ===== Nginx 리버스 프록시 =====
+  # ===== Nginx 리버스 프록시 + SSL =====
   nginx:
     image: nginx:1.25-alpine
     container_name: certihub-nginx
     ports:
       - "${APP_PORT:-80}:80"
+      - "${SSL_PORT:-443}:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/${NGINX_CONF:-nginx.conf}:/etc/nginx/conf.d/default.conf:ro
+      - ${SSL_CERT_PATH:-./nginx/certs}:/etc/letsencrypt:ro
     depends_on:
       backend:
         condition: service_healthy
       frontend:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/nginx-health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ===== PostgreSQL 데이터베이스 =====
   db:
@@ -41,12 +52,18 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - db_backup:/backup
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # 프로덕션에서는 DB 포트 외부 노출하지 않음
 
   # ===== FastAPI 백엔드 (프로덕션 빌드) =====
@@ -59,6 +76,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/certihub
       DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/certihub
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       FRONTEND_SEED_PATH: /frontend-lib/seed-events.ts
       DEBUG: "false"
       CACHE_DIR: /app/cache
@@ -69,8 +87,19 @@ services:
         condition: service_healthy
     volumes:
       - crawler_cache:/app/cache
-      - ./frontend/lib:/frontend-lib
+      - ./frontend/lib:/frontend-lib:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # ===== Next.js 프론트엔드 (프로덕션 빌드) =====
   frontend:
@@ -78,15 +107,28 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost/api}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost}
     container_name: certihub-frontend
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost}
       API_URL_INTERNAL: http://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
   crawler_cache:
+  db_backup:

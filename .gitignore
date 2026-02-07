@@ -33,5 +33,11 @@ postgres_data/
 backend/cache/
 cache/
 
+# === DB 백업 ===
+backups/
+
+# === SSL 인증서 ===
+nginx/certs/
+
 # === OS ===
 Thumbs.db

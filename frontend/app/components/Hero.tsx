@@ -23,7 +23,7 @@ export default function Hero({ certifications, totalCerts, onSelectCert }: HeroP
             c.name_en.toLowerCase().includes(query.toLowerCase()) ||
             c.tag.toLowerCase().includes(query.toLowerCase())
         )
-        .slice(0, 8)
+        .slice(0, 12)
     : [];
 
   // 외부 클릭 시 자동완성 닫기
@@ -40,10 +40,12 @@ export default function Hero({ certifications, totalCerts, onSelectCert }: HeroP
   return (
     <section
       id="hero"
-      className="pt-24 sm:pt-[140px] pb-14 sm:pb-20 px-4 sm:px-6 bg-gradient-to-br from-[#1b1c1d] via-[#2d3436] to-[#1b1c1d] text-center relative overflow-hidden"
+      className="pt-24 sm:pt-[140px] pb-14 sm:pb-20 px-4 sm:px-6 bg-gradient-to-br from-[#1b1c1d] via-[#2d3436] to-[#1b1c1d] text-center relative"
     >
-      {/* Glow Background */}
-      <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_30%_50%,rgba(0,196,113,0.08),transparent_50%),radial-gradient(circle_at_70%_50%,rgba(59,130,246,0.06),transparent_50%)] animate-hero-glow" />
+      {/* Glow Background — overflow-hidden을 글로우 래퍼에만 적용 (드롭다운 잘림 방지) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_30%_50%,rgba(0,196,113,0.08),transparent_50%),radial-gradient(circle_at_70%_50%,rgba(59,130,246,0.06),transparent_50%)] animate-hero-glow" />
+      </div>
 
       <div className="relative z-10 max-w-[700px] mx-auto">
         <h1 className="text-[28px] sm:text-[36px] md:text-[44px] font-extrabold text-white mb-3 sm:mb-4 leading-tight">
@@ -90,7 +92,11 @@ export default function Hero({ certifications, totalCerts, onSelectCert }: HeroP
 
           {/* Autocomplete Results */}
           {showResults && matches.length > 0 && (
-            <div className="absolute top-full left-0 right-0 bg-[#2d3436] border border-white/[0.12] rounded-xl mt-2 max-h-80 overflow-y-auto z-[100]">
+            <div className="absolute top-full left-0 right-0 bg-[#2d3436] border border-white/[0.12] rounded-xl mt-2 max-h-[400px] overflow-y-auto z-[100] shadow-2xl">
+              <div className="sticky top-0 bg-[#2d3436] border-b border-white/[0.08] px-4 sm:px-5 py-2 text-xs text-[#858a8d]">
+                검색 결과 {matches.length}건
+                {matches.length >= 12 && " (상위 12개)"}
+              </div>
               {matches.map((cert) => {
                 const style = TAG_STYLES[cert.tag] || { bg: "#f3f4f6", color: "#374151" };
                 return (

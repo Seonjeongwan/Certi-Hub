@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # ===== CORS =====
     FRONTEND_URL: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str = ""  # 쉼표 구분 추가 허용 도메인 (예: "https://certi-hub.kr,https://www.certi-hub.kr")
 
     # ===== Supabase (Optional) =====
     SUPABASE_URL: str = ""

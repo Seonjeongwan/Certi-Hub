@@ -70,14 +70,23 @@ app = FastAPI(
 # ===== 미들웨어 (순서 중요: 아래서부터 위로 실행) =====
 
 # 1. CORS (가장 먼저 처리)
-allowed_origins = [
-    settings.FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost",
-]
-# 프로덕션에서는 환경변수로 제어
-if not settings.DEBUG:
+if settings.DEBUG:
+    # 개발 환경: localhost 허용
+    allowed_origins = [
+        settings.FRONTEND_URL,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",
+    ]
+else:
+    # 프로덕션: FRONTEND_URL + ALLOWED_ORIGINS 환경변수만 허용
+    allowed_origins = [settings.FRONTEND_URL]
+    if settings.ALLOWED_ORIGINS:
+        allowed_origins.extend(
+            origin.strip()
+            for origin in settings.ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        )
     allowed_origins = [o for o in allowed_origins if o]
 
 app.add_middleware(
