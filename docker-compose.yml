@@ -56,7 +56,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-      - crawler_cache:/app/cache
+      - ./cache:/app/cache              # 호스트 디렉토리 사용 (권한 문제 방지)
       - ./frontend/lib:/frontend-lib    # seed-events.ts 동기화용
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
@@ -90,4 +90,3 @@ services:
 
 volumes:
   postgres_data:
-  crawler_cache:

@@ -32,11 +32,30 @@ CACHE_DIR = Path(os.getenv("CACHE_DIR", "/app/cache"))
 
 @lru_cache(maxsize=1)
 def get_sync_engine():
-    """동기 DB 엔진 (크롤러용) — 싱글턴 캐시"""
-    url = os.getenv(
-        "DATABASE_URL_SYNC",
-        "postgresql+psycopg2://postgres:postgres@localhost:5432/certihub",
-    )
+    """동기 DB 엔진 (크롤러용) — 싱글턴 캐시
+    
+    환경변수 우선순위:
+    1. DATABASE_URL_SYNC 환경변수
+    2. config.py Settings (pydantic-settings, .env 파일 로드)
+    3. 하드코딩 기본값
+    """
+    default_url = "postgresql+psycopg2://postgres:postgres@localhost:5432/certihub"
+    
+    # os.getenv는 빈 문자열도 반환하므로 `or`로 빈 문자열 처리
+    url = os.getenv("DATABASE_URL_SYNC", "").strip() or None
+    
+    # 환경변수가 없으면 config.py Settings에서 가져오기 (.env 파일 로드됨)
+    if not url:
+        try:
+            from config import get_settings
+            url = get_settings().DATABASE_URL_SYNC
+        except Exception:
+            pass
+    
+    url = url or default_url
+    
+    logger.info(f"🔗 동기 DB 연결: {url.split('@')[-1] if '@' in url else '(default)'}")
+    
     return create_engine(
         url,
         echo=False,
