@@ -1,6 +1,10 @@
 # =====================================================
 # Certi-Hub CI/CD — Docker Buildx Bake
 #
+# ✅ 변경된 서비스만 빌드 (path filter)
+# ✅ backend / frontend 병렬 빌드 (별도 Job)
+# ✅ BuildKit 캐시 마운트 + GHA 캐시 활용
+#
 # PR 시: 빌드 테스트만 (push ❌)
 # main 푸시 시: 빌드 + GHCR 푸시 + 태그 자동 생성
 # =====================================================
@@ -10,8 +14,19 @@ name: 🏗️ Build & Push (Bake)
 on:
   push:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-bake.hcl'
+      - 'docker-compose.prod.yml'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-bake.hcl'
+      - '.github/workflows/build.yml'
 
 # 동시 실행 방지 (같은 브랜치에서 중복 빌드 취소)
 concurrency:
@@ -22,27 +37,74 @@ permissions:
   contents: read
   packages: write   # GHCR 푸시 권한
 
+# ============================================================
+# Job 1: 변경된 파일 감지
+# ============================================================
 jobs:
-  bake:
-    name: 🍞 Buildx Bake
+  changes:
+    name: 🔍 변경 감지
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔎 Path Filter
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            infra:
+              - 'docker-bake.hcl'
+              - 'docker-compose.prod.yml'
+              - '.github/workflows/build.yml'
+
+  # ============================================================
+  # Job 2: 공통 메타데이터 (태그 생성)
+  # ============================================================
+  meta:
+    name: 🏷️ 메타데이터
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.tags.outputs.registry }}
+      tag: ${{ steps.tags.outputs.tag }}
+    steps:
+      - name: 🏷️ Generate tags
+        id: tags
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "registry=ghcr.io/${OWNER_LC}" >> $GITHUB_OUTPUT
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          DATE_TAG=$(date +'%Y%m%d')
+          echo "tag=${DATE_TAG}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+  # ============================================================
+  # Job 3: Backend 빌드
+  # ============================================================
+  build-backend:
+    name: 🐍 Backend
+    needs: [changes, meta]
+    # backend 파일 변경 또는 인프라 설정 변경 시에만 빌드
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
 
     steps:
-      # ===== 1. 코드 체크아웃 =====
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ===== 2. QEMU (멀티 플랫폼 빌드용) =====
       - name: 🖥️ Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
           platforms: linux/amd64,linux/arm64
 
-      # ===== 3. Buildx 설정 =====
       - name: 🔧 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ===== 4. GitHub Container Registry 로그인 =====
       - name: 🔐 Login to GHCR
         if: github.event_name == 'push'
         uses: docker/login-action@v3
@@ -51,58 +113,110 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ===== 5. 레지스트리 이름 소문자 변환 + 이미지 태그 생성 =====
-      - name: 🏷️ Generate tags
-        id: meta
-        run: |
-          # Docker 레지스트리 이름은 반드시 소문자여야 함
-          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "registry=ghcr.io/${OWNER_LC}" >> $GITHUB_OUTPUT
-          # 짧은 커밋 해시
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          # 날짜 기반 태그
-          DATE_TAG=$(date +'%Y%m%d')
-          echo "tag=${DATE_TAG}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-
-      # ===== 6. Bake — PR 시 빌드만 (push 안 함) =====
-      - name: 🧪 Bake (PR 테스트 빌드)
+      # PR: 빌드만 (amd64 only, push 안 함)
+      - name: 🧪 Build (PR 테스트)
         if: github.event_name == 'pull_request'
         uses: docker/bake-action@v5
         with:
-          targets: prod
+          targets: backend-prod
           set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            *.cache-from=type=gha,scope=backend
+            *.cache-to=type=gha,scope=backend,mode=max
             *.platform=linux/amd64
-        env:
-          TAG: pr-${{ github.event.pull_request.number }}
-          REGISTRY: ${{ steps.meta.outputs.registry }}
-          NEXT_PUBLIC_API_URL: http://localhost
 
-      # ===== 7. Bake — main 푸시 시 빌드 + 레지스트리 푸시 =====
-      - name: 🚀 Bake & Push (Production)
+      # Push: 빌드 + GHCR 푸시
+      - name: 🚀 Build & Push
         if: github.event_name == 'push'
         uses: docker/bake-action@v5
         with:
-          targets: prod
+          targets: backend-prod
           push: true
           set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            *.cache-from=type=gha,scope=backend
+            *.cache-to=type=gha,scope=backend,mode=max
         env:
-          TAG: ${{ steps.meta.outputs.tag }}
-          REGISTRY: ${{ steps.meta.outputs.registry }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          REGISTRY: ${{ needs.meta.outputs.registry }}
+
+  # ============================================================
+  # Job 4: Frontend 빌드
+  # ============================================================
+  build-frontend:
+    name: ⚛️ Frontend
+    needs: [changes, meta]
+    # frontend 파일 변경 또는 인프라 설정 변경 시에만 빌드
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🖥️ Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # PR: 빌드만 (amd64 only, push 안 함)
+      - name: 🧪 Build (PR 테스트)
+        if: github.event_name == 'pull_request'
+        uses: docker/bake-action@v5
+        with:
+          targets: frontend-prod
+          set: |
+            *.cache-from=type=gha,scope=frontend
+            *.cache-to=type=gha,scope=frontend,mode=max
+            *.platform=linux/amd64
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost
+
+      # Push: 빌드 + GHCR 푸시
+      - name: 🚀 Build & Push
+        if: github.event_name == 'push'
+        uses: docker/bake-action@v5
+        with:
+          targets: frontend-prod
+          push: true
+          set: |
+            *.cache-from=type=gha,scope=frontend
+            *.cache-to=type=gha,scope=frontend,mode=max
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          REGISTRY: ${{ needs.meta.outputs.registry }}
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost' }}
 
-      # ===== 8. 빌드 결과 요약 =====
+  # ============================================================
+  # Job 5: 빌드 결과 요약
+  # ============================================================
+  summary:
+    name: 📋 Summary
+    needs: [meta, build-backend, build-frontend]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
       - name: 📋 Build Summary
-        if: github.event_name == 'push'
         run: |
           echo "## 🍞 Bake 빌드 완료!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 서비스 | 상태 |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ needs.build-backend.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ needs.build-frontend.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 이미지 | 태그 |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ steps.meta.outputs.registry }}/certihub-backend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ steps.meta.outputs.registry }}/certihub-frontend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ needs.meta.outputs.registry }}/certihub-backend\` | \`${{ needs.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ needs.meta.outputs.registry }}/certihub-frontend\` | \`${{ needs.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📦 Pull: \`docker pull ${{ steps.meta.outputs.registry }}/certihub-backend:${{ steps.meta.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Pull: \`docker pull ${{ needs.meta.outputs.registry }}/certihub-backend:${{ needs.meta.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY

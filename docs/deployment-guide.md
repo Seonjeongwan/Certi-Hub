@@ -437,12 +437,14 @@ git push origin main
 ```
 
 GitHub Actions가 자동으로:
-1. 코드 체크아웃
-2. Buildx + QEMU 설정 (멀티 플랫폼)
-3. GHCR 로그인
-4. `docker buildx bake prod` 실행 (backend + frontend 병렬 빌드)
-5. 빌드된 이미지를 GHCR에 푸시
+1. **변경 감지** (path filter): backend/frontend 파일 변경 여부 확인
+2. 변경된 서비스만 **별도 Job으로 병렬 빌드** (backend ↔ frontend 동시)
+3. Buildx + QEMU 설정 (멀티 플랫폼)
+4. GHCR 로그인 + 이미지 빌드 & 푸시
+5. **BuildKit 캐시 마운트** (`--mount=type=cache`): npm/pip 다운로드 캐시 재사용
 6. 태그: `20260209-abc1234` (날짜-커밋해시) + `latest`
+
+> 💡 **빌드 최적화**: docs만 변경하면 빌드가 스킵되고, backend만 변경하면 frontend 빌드도 스킵됩니다.
 
 ##### 로컬에서 수동 Bake (선택사항)
 
