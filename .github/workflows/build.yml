@@ -1,0 +1,107 @@
+# =====================================================
+# Certi-Hub CI/CD — Docker Buildx Bake
+#
+# PR 시: 빌드 테스트만 (push ❌)
+# main 푸시 시: 빌드 + GHCR 푸시 + 태그 자동 생성
+# =====================================================
+
+name: 🏗️ Build & Push (Bake)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 동시 실행 방지 (같은 브랜치에서 중복 빌드 취소)
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+permissions:
+  contents: read
+  packages: write   # GHCR 푸시 권한
+
+jobs:
+  bake:
+    name: 🍞 Buildx Bake
+    runs-on: ubuntu-latest
+
+    steps:
+      # ===== 1. 코드 체크아웃 =====
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      # ===== 2. QEMU (멀티 플랫폼 빌드용) =====
+      - name: 🖥️ Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      # ===== 3. Buildx 설정 =====
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ===== 4. GitHub Container Registry 로그인 =====
+      - name: 🔐 Login to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ===== 5. 이미지 태그 생성 =====
+      - name: 🏷️ Generate tags
+        id: meta
+        run: |
+          # 짧은 커밋 해시
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          # 날짜 기반 태그
+          DATE_TAG=$(date +'%Y%m%d')
+          echo "tag=${DATE_TAG}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      # ===== 6. Bake — PR 시 빌드만 (push 안 함) =====
+      - name: 🧪 Bake (PR 테스트 빌드)
+        if: github.event_name == 'pull_request'
+        uses: docker/bake-action@v5
+        with:
+          targets: prod
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+            *.platform=linux/amd64
+        env:
+          TAG: pr-${{ github.event.pull_request.number }}
+          NEXT_PUBLIC_API_URL: http://localhost
+
+      # ===== 7. Bake — main 푸시 시 빌드 + 레지스트리 푸시 =====
+      - name: 🚀 Bake & Push (Production)
+        if: github.event_name == 'push'
+        uses: docker/bake-action@v5
+        with:
+          targets: prod
+          push: true
+          set: |
+            *.cache-from=type=gha
+            *.cache-to=type=gha,mode=max
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          REGISTRY: ${{ env.REGISTRY }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost' }}
+
+      # ===== 8. 빌드 결과 요약 =====
+      - name: 📋 Build Summary
+        if: github.event_name == 'push'
+        run: |
+          echo "## 🍞 Bake 빌드 완료!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 이미지 | 태그 |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ env.REGISTRY }}/certihub-backend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ env.REGISTRY }}/certihub-frontend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Pull: \`docker pull ${{ env.REGISTRY }}/certihub-backend:${{ steps.meta.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY

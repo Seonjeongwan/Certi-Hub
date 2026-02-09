@@ -2,10 +2,15 @@
 # Certi-Hub Production Docker Compose
 # 프로덕션 환경 배포용 (Nginx + SSL + 멀티스테이지 빌드)
 #
-# 사용법:
+# 사용법 (로컬 빌드):
 #   docker compose -f docker-compose.prod.yml up -d --build
-#   docker compose -f docker-compose.prod.yml logs -f
-#   docker compose -f docker-compose.prod.yml down
+#
+# 사용법 (Bake 프리빌트 이미지):
+#   TAG=latest docker compose -f docker-compose.prod.yml up -d
+#
+# Bake로 빌드:
+#   docker buildx bake prod
+#   docker buildx bake --push prod    # Registry에 푸시
 #
 # SSL 인증서 발급 (최초 1회):
 #   sudo certbot certonly --standalone -d yourdomain.kr
@@ -68,6 +73,8 @@ services:
 
   # ===== FastAPI 백엔드 (프로덕션 빌드) =====
   backend:
+    # Bake 프리빌트 이미지 사용 시: TAG=20260209-abc1234 docker compose -f docker-compose.prod.yml up -d
+    image: ${REGISTRY:-ghcr.io/seonjeongwan}/certihub-backend:${TAG:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -103,6 +110,8 @@ services:
 
   # ===== Next.js 프론트엔드 (프로덕션 빌드) =====
   frontend:
+    # Bake 프리빌트 이미지 사용 시: TAG=20260209-abc1234 docker compose -f docker-compose.prod.yml up -d
+    image: ${REGISTRY:-ghcr.io/seonjeongwan}/certihub-frontend:${TAG:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
