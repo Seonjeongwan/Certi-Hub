@@ -57,7 +57,9 @@ group "all" {
 // ============================================================
 
 target "_common" {
-  // GitHub Actions 캐시 활용
+  // 로컬 빌드 시 GitHub Actions 캐시 활용
+  // ⚠️ CI(build.yml)에서는 scope별 캐시로 오버라이드됨
+  //    (*.cache-from=type=gha,scope=backend 등)
   cache-from = ["type=gha"]
   cache-to   = ["type=gha,mode=max"]
 }

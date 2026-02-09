@@ -1,17 +1,18 @@
 # =====================================================
-# Certi-Hub 자동 크롤링 워크플로우
-# guide.md 4.3절: 자동 업데이트 파이프라인 (Automation)
-# 매일 오전 9시(KST) + 매주 월요일 시험 일정 크롤링
+# Certi-Hub 수동 크롤링 워크플로우
+#
+# ⚠️ 자동 스케줄(cron)은 비활성화됨
+#    → 서버 배포 후에는 Docker 내부 APScheduler가 자동 크롤링 담당
+#    → GitHub Actions 러너에서는 DB 접근이 불가하므로 schedule 사용 불가
+#
+# 수동 실행 방법:
+#   GitHub 저장소 → Actions → "🕷️ 수동 크롤링" → Run workflow
+#   (DB가 외부 접근 가능한 경우에만 작동)
 # =====================================================
 
-name: 📅 자격증 시험 일정 자동 크롤링
+name: 🕷️ 수동 크롤링
 
 on:
-  schedule:
-    # 매일 KST 오전 9시 (UTC 00:00)
-    - cron: "0 0 * * *"
-    # 매주 월요일 KST 오전 6시 (UTC 일요일 21:00) - 전체 갱신
-    - cron: "0 21 * * 0"
   workflow_dispatch:
     inputs:
       source:
@@ -24,6 +25,10 @@ on:
           - qnet
           - kdata
           - cloud
+      database_url:
+        description: "DB 연결 URL (비워두면 secrets.DATABASE_URL 사용)"
+        required: false
+        type: string
 
 env:
   PYTHON_VERSION: "3.12"
@@ -47,9 +52,21 @@ jobs:
       - name: 📦 의존성 설치
         run: pip install -r backend/requirements.txt
 
+      - name: 🔗 DB 연결 확인
+        env:
+          DATABASE_URL_SYNC: ${{ inputs.database_url || secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL_SYNC" ]; then
+            echo "❌ DB URL이 설정되지 않았습니다."
+            echo "   → Repository secrets에 DATABASE_URL을 설정하거나"
+            echo "   → workflow_dispatch 실행 시 database_url을 입력하세요."
+            exit 1
+          fi
+          echo "✅ DB URL 확인됨"
+
       - name: 🕷️ 크롤러 실행
         env:
-          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ inputs.database_url || secrets.DATABASE_URL }}
         working-directory: backend
         run: |
           SOURCE="${{ github.event.inputs.source || 'all' }}"
