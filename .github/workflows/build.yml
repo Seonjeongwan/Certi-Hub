@@ -18,9 +18,6 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  REGISTRY: ghcr.io/${{ github.repository_owner }}
-
 permissions:
   contents: read
   packages: write   # GHCR 푸시 권한
@@ -54,10 +51,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ===== 5. 이미지 태그 생성 =====
+      # ===== 5. 레지스트리 이름 소문자 변환 + 이미지 태그 생성 =====
       - name: 🏷️ Generate tags
         id: meta
         run: |
+          # Docker 레지스트리 이름은 반드시 소문자여야 함
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "registry=ghcr.io/${OWNER_LC}" >> $GITHUB_OUTPUT
           # 짧은 커밋 해시
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           # 날짜 기반 태그
@@ -76,6 +76,7 @@ jobs:
             *.platform=linux/amd64
         env:
           TAG: pr-${{ github.event.pull_request.number }}
+          REGISTRY: ${{ steps.meta.outputs.registry }}
           NEXT_PUBLIC_API_URL: http://localhost
 
       # ===== 7. Bake — main 푸시 시 빌드 + 레지스트리 푸시 =====
@@ -90,7 +91,7 @@ jobs:
             *.cache-to=type=gha,mode=max
         env:
           TAG: ${{ steps.meta.outputs.tag }}
-          REGISTRY: ${{ env.REGISTRY }}
+          REGISTRY: ${{ steps.meta.outputs.registry }}
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost' }}
 
       # ===== 8. 빌드 결과 요약 =====
@@ -101,7 +102,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 이미지 | 태그 |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ env.REGISTRY }}/certihub-backend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ env.REGISTRY }}/certihub-frontend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ steps.meta.outputs.registry }}/certihub-backend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ steps.meta.outputs.registry }}/certihub-frontend\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📦 Pull: \`docker pull ${{ env.REGISTRY }}/certihub-backend:${{ steps.meta.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Pull: \`docker pull ${{ steps.meta.outputs.registry }}/certihub-backend:${{ steps.meta.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
