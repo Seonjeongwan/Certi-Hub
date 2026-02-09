@@ -3,6 +3,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+// 동적 라우트 강제 (request.url 사용으로 정적 생성 불가)
+export const dynamic = "force-dynamic";
+
 // 서버사이드: Docker 내부 URL 우선 사용 (backend 컨테이너 → backend:8000)
 const API_BASE = process.env.API_URL_INTERNAL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
